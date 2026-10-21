@@ -204,6 +204,7 @@ function renderStatus() {
 // ---------------------------------------------------------------------------
 let link = null;
 let esp32Client = null;
+let esp32LastSeenAt = 0;
 
 function initCloud() {
   link = new CloudLink({ onMessage: handleCloudMessage, onState: applyCloudState });
@@ -566,6 +567,15 @@ async function connectBrowserSerial() {
   }
 }
 
+function refreshEsp32Heartbeat() {
+  if (!esp32Client?.connected || !el.esp32State) return;
+  const online = esp32LastSeenAt && performance.now() - esp32LastSeenAt < 16000;
+  if (!online) {
+    el.esp32State.textContent = "الوسيط متصل؛ بانتظار ESP32";
+    el.esp32State.classList.remove("on");
+  }
+}
+
 async function connectEsp32Broker() {
   const url = el.esp32Host?.value.trim();
   const username = el.esp32User?.value.trim();
@@ -591,6 +601,7 @@ async function connectEsp32Broker() {
     });
     esp32Client = client;
     client.on("connect", () => {
+      esp32LastSeenAt = 0;
       client.subscribe("tawaf/esp32/status", { qos: 0 });
       if (el.esp32State) {
         el.esp32State.textContent = "متصل بالوسيط؛ بانتظار ESP32";
@@ -601,7 +612,8 @@ async function connectEsp32Broker() {
       if (topic !== "tawaf/esp32/status") return;
       let msg;
       try { msg = JSON.parse(payload.toString()); } catch { return; }
-      const online = msg.device === "tawaf-esp32" && msg.online === true && Date.now() - Number(msg.ts || 0) < 20000;
+      const online = msg.device === "tawaf-esp32" && msg.online === true;
+      if (online) esp32LastSeenAt = performance.now();
       if (el.esp32State) {
         el.esp32State.textContent = online ? "ESP32 متصلة بالأردوينو" : "الوسيط متصل؛ ESP32 غير متصلة";
         el.esp32State.classList.toggle("on", online);
@@ -621,12 +633,13 @@ async function connectEsp32Broker() {
     });
     client.on("close", () => {
       if (esp32Client === client && el.esp32State) {
+        esp32LastSeenAt = 0;
         el.esp32State.textContent = "انقطع اتصال وسيط ESP32";
         el.esp32State.classList.remove("on");
         el.esp32State.classList.add("bad");
       }
     });
-    localStorage.setItem("tawaf.esp32.mqtt", JSON.stringify({ url, username, password }));
+    localStorage.setItem("tawaf.esp32.mqtt", JSON.stringify({ url, username }));
   } catch (err) {
     toast("تعذر بدء اتصال ESP32: " + (err.message || "خطأ"), true);
   }
@@ -656,7 +669,7 @@ function restoreEsp32Settings() {
     const saved = JSON.parse(localStorage.getItem("tawaf.esp32.mqtt") || "null");
     if (saved && el.esp32Host) el.esp32Host.value = saved.url || "";
     if (saved && el.esp32User) el.esp32User.value = saved.username || "";
-    if (saved && el.esp32Password) el.esp32Password.value = saved.password || "";
+
   } catch {}
 }
 
@@ -1663,6 +1676,7 @@ function bindControls() {
     if (!el.drawer.classList.contains("hidden")) {
       requestPorts();
       requestCloudStatus();
+      refreshEsp32Heartbeat();
     }
   });
   el.btnCloudCheck.addEventListener("click", requestCloudStatus);
