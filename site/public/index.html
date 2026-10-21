@@ -209,6 +209,16 @@
       <p class="field-hint" data-i18n="drawer.portsHint">اقترن بـ HC-05 من إعدادات ويندوز أولاً، ثم اختر المنفذ هنا.</p>
       <div class="serial-state" id="serial-state">—</div>
 
+      <div class="serial-row">
+        <input id="esp32-host" type="url" inputmode="url" placeholder="wss://broker.example:8084/mqtt" aria-label="عنوان وسيط ESP32 الآمن" />
+        <input id="esp32-user" type="text" autocomplete="username" placeholder="اسم المستخدم" aria-label="اسم مستخدم الوسيط" />
+        <input id="esp32-password" type="password" autocomplete="current-password" placeholder="كلمة مرور الوسيط" aria-label="كلمة مرور الوسيط" />
+        <button class="ghost small accent" id="btn-esp32-connect" type="button">حفظ واتصال ESP32</button>
+        <button class="ghost small" id="btn-esp32-disconnect" type="button">فصل ESP32</button>
+      </div>
+      <p class="field-hint">للجوال والآيباد: أدخل عنوان MQTT عبر WebSocket المشفّر (WSS) وبيانات حساب ESP32 ثم اتصل. أنشئ حسابًا محدودًا لأوامر هذا الجهاز فقط.</p>
+      <div class="serial-state" id="esp32-state">ESP32 غير متصل</div>
+
       <h4 data-i18n="drawer.logTitle">آخر الأوامر المرسلة</h4>
       <ul class="cmd-log" id="cmd-log">
         <li class="muted" data-i18n="drawer.noLog">لا توجد أوامر بعد</li>
