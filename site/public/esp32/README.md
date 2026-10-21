@@ -1,15 +1,21 @@
-# ESP32 bridge for Tawaf
+# Tawaf ESP32 bridge
 
-This firmware bridges the website's MQTT commands to the existing Uno sketch over UART.
+This firmware connects an ESP32 to the same EMQX MQTT broker used by the Tawaf website and forwards hardware commands to the Uno over UART. Once flashed and connected to Wi-Fi, the website sends commands through the cloud; no CMD window or laptop agent is needed.
 
-## Before flashing
-1. Install ESP32 board support in Arduino IDE and the PubSubClient library.
-2. Fill in Wi-Fi SSID/password and the private MQTT broker host, user, and password in `esp32_mqtt_bridge.ino`.
-3. Configure MQTT TLS (port 8883) on the board and secure WebSockets (WSS) for browser clients. Create separate limited accounts for the ESP32 and website. Restrict both accounts to `tawaf/esp32/#`.
-4. Replace `tls.setInsecure()` with the broker's CA certificate before production use.
-5. Upload to the ESP32 and wire its UART2 to an available Uno software-serial port. Never connect Uno 5V TX directly to ESP32 RX; use a level shifter or resistor divider.
-6. Enter the broker WSS URL and website account credentials in the site's ESP32 settings.
+## Prepare and flash
 
-Only the commands F, D, N, and C are accepted. The site publishes to `tawaf/esp32/cmd`, and the board's heartbeat appears on `tawaf/esp32/status`.
+1. In Arduino IDE, install the ESP32 board package and the `PubSubClient` library.
+2. Open `esp32_mqtt_bridge.ino` and set `WIFI_SSID` and `WIFI_PASSWORD`. These are saved on the physical ESP32; do not commit your real Wi-Fi password.
+3. Confirm the Uno program reads single-byte commands `F`, `D`, `N`, and `C` at 9600 baud on software-serial RX pin 10. If your Uno sketch uses different pins or baud, update `UNO_RX_PIN`, `UNO_TX_PIN`, or `UNO_BAUD` to match.
+4. Wire ESP32 GPIO17 (TX2) to the Uno software-serial RX through a 3.3V-safe level shifter or divider. Connect ESP32 GPIO16 (RX2) to the Uno software-serial TX, and connect grounds together. Do not connect Uno 5V TX directly to ESP32 RX.
+5. Select the correct ESP32 board and port in Arduino IDE, then upload the sketch. The board must be on Wi-Fi with internet access.
 
-Credentials are placeholders. A private MQTT broker must be configured before this can connect. Do not commit Wi-Fi or broker secrets, and do not use an open public broker for commands that can actuate hardware.
+The firmware uses TLS to connect to `broker.emqx.io:8883`, subscribes to `bsg/v2/hw/tawaf-bot-01/cmd`, and publishes its online state to `bsg/v2/hw/tawaf-bot-01/state`. The website sends hardware commands using these same cloud topics. MQTT uses client authentication neither for the web app nor for this ESP32 sketch.
+
+## Public broker warning
+
+The command topic is public and unauthenticated. Anyone who discovers the robot ID and topic can publish allowed commands directly, without logging in to or opening the website. The firmware only forwards `F`, `D`, `N`, and `C`, but those commands can still actuate hardware. This setup is being used at the owner's explicit request. To restrict control later, move both the website and ESP32 to a private authenticated broker and rotate the topic/robot ID.
+
+## Limits
+
+This change removes the laptop-side Python/CMD agent from the ESP32 path. It does not configure the physical Uno or ESP32 automatically: the Wi-Fi credentials must be entered and the sketch flashed once, and UART wiring must match the Uno sketch. The HC-05 remains available for direct Web Serial use in supported desktop browsers; mobile browsers generally cannot use the HC-05 Web Serial path.
