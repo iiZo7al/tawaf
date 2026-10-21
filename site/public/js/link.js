@@ -20,11 +20,10 @@ export const ROBOT_ID = (window.BSG_ROBOT_ID || "tawaf-bot-01").toLowerCase();
 export const HW_TOPIC = `bsg/v2/hw/${ROBOT_ID}/state`;
 export const HW_CMD_TOPIC = `bsg/v2/hw/${ROBOT_ID}/cmd`;
 
-// Two independent public brokers: the first one that answers is used.
+// Keep broker order identical on both devices; try the backup if the first is down.
 export const BROKERS = [
   "wss://broker.emqx.io:8084/mqtt",
-  // Both devices must use the same broker or they cannot see each other's room.
-  // Keep one deterministic public broker for pairing; reconnect handles drops.
+  "wss://broker.hivemq.com:8884/mqtt",
 ];
 
 const TOPIC_ROOT = "bsg/v2";
