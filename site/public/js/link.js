@@ -23,7 +23,8 @@ export const HW_CMD_TOPIC = `bsg/v2/hw/${ROBOT_ID}/cmd`;
 // Two independent public brokers: the first one that answers is used.
 export const BROKERS = [
   "wss://broker.emqx.io:8084/mqtt",
-  "wss://broker.hivemq.com:8884/mqtt",
+  // Both devices must use the same broker or they cannot see each other's room.
+  // Keep one deterministic public broker for pairing; reconnect handles drops.
 ];
 
 const TOPIC_ROOT = "bsg/v2";
@@ -207,3 +208,4 @@ export class CloudLink {
     this.setState("idle");
   }
 }
+
