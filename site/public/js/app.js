@@ -560,8 +560,9 @@ async function connectBrowserSerial() {
 }
 
 async function writeSerialCommand(cmd) {
+  if (esp32Client?.connected) return publishEsp32Command(cmd);
   if (!state.serialPort || !state.serialPort.writable) {
-    if (state.role === "view") toast("اتصل بـ HC-05 من إعدادات الموقع أولاً.", true);
+    if (state.role === "view") toast("اتصل بـ HC-05 أو ESP32 من إعدادات الموقع أولاً.", true);
     return false;
   }
   try {
@@ -590,7 +591,13 @@ function logCommand(cmd, ok) {
 
 function hardware(cmd) {
   if (state.role === "view" || state.mode === "both") {
-    writeSerialCommand(cmd);
+    if (state.serialPort?.writable) {
+      writeSerialCommand(cmd);
+      return;
+    }
+    const sent = link?.sendHardware({ type: "command", cmd });
+    logCommand(cmd, Boolean(sent));
+    if (!sent) toast("السحابة غير متصلة؛ لم يُرسل أمر الأردوينو.", true);
     return;
   }
   if (link && state.pairCode) link.send({ type: "control", action: "hardware", cmd });
@@ -1561,6 +1568,7 @@ function bindControls() {
     if (!el.drawer.classList.contains("hidden")) {
       requestPorts();
       requestCloudStatus();
+      refreshEsp32Heartbeat();
     }
   });
   el.btnCloudCheck.addEventListener("click", requestCloudStatus);
