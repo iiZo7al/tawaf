@@ -1043,7 +1043,13 @@ function timeFromFilename(name) {
 // ---------------------------------------------------------------------------
 async function startCameraRole() {
   const code = normalizeCode(el.pairInput?.value || params.get("code") || "");
-  if (state.mode !== "both" && code.length !== 6) {
+  if (state.mode === "both") {
+    state.pairCode = "";
+    state.pairAck = true;
+    state.pairPending = false;
+    return openPendingCamera();
+  }
+  if (code.length !== 6) {
     toast(t("toast.pairRequired"), true);
     el.pairInput?.focus();
     return;
