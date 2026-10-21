@@ -1,0 +1,13 @@
+{
+  "outputDirectory": "site/public",
+  "rewrites": [
+    {
+      "source": "/media/:path*",
+      "destination": "https://site-6af43b07f0b7466b81736010df6acc2f.freebuff.page/media/:path*"
+    },
+    {
+      "source": "/incidents/:path*",
+      "destination": "https://site-6af43b07f0b7466b81736010df6acc2f.freebuff.page/incidents/:path*"
+    }
+  ]
+}

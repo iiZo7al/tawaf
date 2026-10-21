@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#070b12" />
+<link rel="icon" href="assets/brand-logo.png" />
+<title>حارس الحجر الأسود الذكي — Smart Black Stone Guard</title>
+<link rel="stylesheet" href="styles.css" />
+<link rel="stylesheet" href="theme-andalus.css" />
+<link rel="stylesheet" href="theme-dark.css" />
+<script>try{document.documentElement.dataset.theme=localStorage.getItem('bsg.theme')||'dark'}catch(e){document.documentElement.dataset.theme='dark'}</script>
+</head>
+<body>
+<div id="app" class="app">
+
+  <canvas id="stage" class="stage"></canvas>
+  <div class="solo-badge hidden" id="solo-badge"><i></i><span id="solo-text">متصل</span></div>
+  <div class="vignette"></div>
+
+  <!-- ===================== Top bar ===================== -->
+  <header class="topbar hud" id="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <img class="logo-light" src="assets/brand-logo.png" alt="" />
+        <img class="logo-dark" src="assets/brand-logo-dark.png" alt="" />
+      </div>
+      <div class="brand-text">
+        <h1 data-i18n="brand.title">حارس الحجر الأسود الذكي</h1>
+        <p data-i18n="brand.sub">SMART BLACK STONE GUARD · WRO 2026 · مبدعو الأندلس</p>
+      </div>
+    </div>
+
+    <div class="chips">
+      <span class="chip" id="chip-role"><i></i><b data-i18n="chip.role">دور</b> <span>—</span></span>
+      <span class="chip" id="chip-ai"><i></i><b data-i18n="chip.ai">AI</b> <span>—</span></span>
+      <button class="chip chip-btn" id="chip-serial" title="Arduino">
+        <i></i><b data-i18n="chip.arduino">الأردوينو</b> <span>—</span>
+      </button>
+      <span class="chip" id="chip-cloud"><i></i><b data-i18n="chip.cloud">السحابة</b> <span>—</span></span>
+      <span class="chip" id="chip-fps"><i></i><b data-i18n="chip.fps">FPS</b> <span>—</span></span>
+    </div>
+
+    <div class="top-actions">
+      <button class="icon-btn" id="btn-theme" title="الوضع الليلي">◐</button>
+      <div class="lang-switch" role="group" aria-label="Language">
+        <button data-lang-btn="ar" class="active" title="العربية">ع</button>
+        <button data-lang-btn="en" title="English">EN</button>
+      </div>
+      <button class="icon-btn" id="btn-fullscreen" data-i18n-title="btn.fullscreen" title="ملء الشاشة (F)">⛶</button>
+      <button class="icon-btn" id="btn-hud" data-i18n-title="btn.hud" title="إخفاء الواجهة (H)">◱</button>
+      <button class="icon-btn" id="btn-settings" data-i18n-title="btn.settings" title="التشخيص والاتصال">⚙</button>
+    </div>
+  </header>
+
+  <!-- ===================== Alert banner ===================== -->
+  <div class="alert-banner hidden" id="alert-banner">
+    <span class="pulse-dot"></span>
+    <strong data-i18n="alert.title">حالة طوارئ — سقوط مؤكد</strong>
+    <span class="alert-reason" id="alert-reason"></span>
+  </div>
+
+  <!-- ===================== Bio-metric sidebar ===================== -->
+  <aside class="sidebar hud" id="sidebar">
+    <h2><span data-i18n="sidebar.title">القياسات الحيوية</span> <span class="live">LIVE</span></h2>
+
+    <div class="metric">
+      <div class="metric-head"><span data-i18n="metric.torso">زاوية الجذع</span><b id="m-torso">—</b></div>
+      <div class="bar"><div class="bar-fill" id="m-torso-bar"></div></div>
+      <div class="metric-foot">
+        <span data-i18n="metric.lying">0° مستلقٍ</span>
+        <span data-i18n="metric.standing">90° واقف</span>
+      </div>
+    </div>
+
+    <div class="metric-grid">
+      <div class="cell"><span data-i18n="metric.drop">سرعة السقوط</span><b id="m-drop">0.00</b><em data-i18n="metric.unit">م/ث</em></div>
+      <div class="cell"><span data-i18n="metric.stability">الاستقرار</span><b id="m-stab">0%</b></div>
+      <div class="cell"><span data-i18n="metric.incidents">الحوادث</span><b id="m-incidents">0</b></div>
+      <div class="cell"><span data-i18n="metric.light">الإضاءة</span><b id="m-light">—</b></div>
+    </div>
+
+    <div class="lamp-row" id="lamp-row">
+      <span class="lamp-dot" id="lamp-dot"></span>
+      <span id="lamp-text" data-i18n="lamp.idle">اللمبة التلقائية: غير مفعّلة</span>
+    </div>
+
+    <div class="subjects" id="subjects">
+      <span class="dot"></span><span id="subjects-text" data-i18n="subjects.none">لا يوجد شخص في الإطار</span>
+    </div>
+  </aside>
+
+  <!-- ===================== Incidents rail ===================== -->
+  <aside class="rail hud" id="rail">
+    <h2><span data-i18n="rail.title">الصندوق الأسود</span> <span class="count" id="rail-count">0</span></h2>
+    <div class="rail-list" id="rail-list">
+      <p class="rail-empty" data-i18n="rail.empty">لا توجد حوادث مسجّلة بعد</p>
+    </div>
+  </aside>
+
+  <!-- ===================== Bottom bar ===================== -->
+  <footer class="bottombar hud" id="bottombar">
+    <div class="status-wrap">
+      <div class="status-line" id="status-text" data-i18n="status.idle">اختر الدور ثم ابدأ المراقبة</div>
+      <div class="recovery hidden" id="recovery">
+        <span data-i18n="recovery.label">المصاب يقف — إلغاء تلقائي</span>
+        <div class="recovery-bar"><div id="recovery-fill"></div></div>
+        <b id="recovery-pct">0%</b>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="ctl" data-key="f">⛶<span data-i18n="ctl.fullscreen">ملء الشاشة</span></button>
+      <button class="ctl" data-key="h">◱<span data-i18n="ctl.hud">الواجهة</span></button>
+      <button class="ctl" data-key="t">▶<span data-i18n="ctl.test">اختبار محاكاة</span></button>
+      <button class="ctl" data-key="l">💡<span data-i18n="ctl.lamp">اختبار اللمبة</span></button>
+      <button class="ctl" data-key="v">🔊<span data-i18n="ctl.voice">الصوت</span></button>
+      <button class="ctl" data-key="b">📈<span data-i18n="ctl.sidebar">القياسات</span></button>
+      <button class="ctl danger" data-key="q">■<span data-i18n="ctl.quit">إيقاف</span></button>
+    </div>
+  </footer>
+
+  <!-- ===================== Setup / start panel ===================== -->
+  <section class="setup" id="setup">
+    <div class="setup-card">
+      <div class="lang-switch setup-lang" role="group" aria-label="Language">
+        <button data-lang-btn="ar" class="active" title="العربية">ع</button>
+        <button data-lang-btn="en" title="English">EN</button>
+      </div>
+      <div class="setup-head">
+        <h2 data-i18n="setup.title">بدء الجلسة</h2>
+        <p data-i18n="setup.desc">اختر الدور ثم ابدأ المراقبة. الكشف يعمل داخل المتصفح بالكامل — لا تُرفع أي صورة إلى الخارج.</p>
+      </div>
+
+      <div class="role-grid">
+        <button class="role selected" data-role="camera">
+          <strong data-i18n="setup.cameraRole.title">كاميرا فقط</strong>
+          <span data-i18n="setup.cameraRole.desc">يشغّل الكاميرا والتحليل ويرسل للبقية، بلا واجهة — فقط مؤشر «متصل» في الزاوية.</span>
+        </button>
+        <button class="role" data-role="view">
+          <strong data-i18n="setup.viewRole.title">شاشة فقط</strong>
+          <span data-i18n="setup.viewRole.desc">يستقبل الصورة والإنذارات من جهاز الكاميرا ويعرضها بكل الواجهة (مثل الآيباد).</span>
+        </button>
+        <button class="role" data-role="both">
+          <strong data-i18n="setup.bothRole.title">كاميرا + شاشة</strong>
+          <span data-i18n="setup.bothRole.desc">الواجهة الكاملة مع الكاميرا على نفس الجهاز: القياسات والإنذارات مباشرة.</span>
+        </button>
+      </div>
+
+      <div class="field" id="pair-row">
+        <label for="pair-input" data-i18n="setup.pairLabel">رقم الشاشة (6 أرقام)</label>
+        <input id="pair-input" class="pair-input" inputmode="numeric" autocomplete="one-time-code"
+               maxlength="6" pattern="[0-9]{6}" placeholder="123456" dir="ltr" />
+        <p class="field-hint" data-i18n="setup.pairHint">افتح الشاشة على الجهاز الآخر واختر «شاشة فقط»، ثم اكتب الرقم الظاهر هنا.</p>
+      </div>
+
+      <div class="field" id="device-row">
+        <label for="device-select" data-i18n="setup.camera">كاميرا هذا الجهاز</label>
+        <select id="device-select"><option value="">—</option></select>
+        <p class="field-hint" data-i18n="setup.hint">تُدرج كاميرا USB أو كاميرا IR تلقائياً بمجرد توصيلها.</p>
+      </div>
+
+      <div class="setup-actions">
+        <button class="primary" id="btn-start" data-i18n="setup.start">▶ بدء المراقبة</button>
+        <button class="ghost" id="btn-serial" data-i18n="setup.serial">اتصال الأردوينو (بلوتوث)</button>
+        <button class="ghost" id="btn-diagnostics" data-i18n="setup.selftest">اختبار المنطق</button>
+      </div>
+
+      <p class="setup-note" id="setup-note"></p>
+    </div>
+  </section>
+
+  <!-- ===================== Waiting (viewer) ===================== -->
+  <div class="waiting hidden" id="waiting">
+    <div class="waiting-box">
+      <div class="spinner"></div>
+      <h2 id="waiting-title" data-i18n="waiting.title">بانتظار جهاز الكاميرا…</h2>
+      <p id="waiting-desc" data-i18n="waiting.desc">افتح الصفحة على جهاز الكاميرا، واكتب رقم الاقتران التالي في خانة «رقم الشاشة».</p>
+      <div class="pair-code-card" id="pair-card">
+        <span class="pair-code-label" data-i18n="waiting.codeLabel">رقم الاقتران</span>
+        <div class="pair-code" id="pair-code" dir="ltr">------</div>
+        <button class="ghost small" id="pair-copy" data-i18n="waiting.copy">نسخ الرقم</button>
+      </div>
+      <p class="waiting-hint" data-i18n="waiting.codeHint">الرقم يتغيّر لكل جلسة، ويعمل من أي شبكة — لا يلزم نفس الواي فاي.</p>
+
+      <!-- Camera-only: shown while we prove the code with the display -->
+      <div class="pair-code-card hidden" id="pair-pending-card">
+        <span class="pair-code-label" data-i18n="pair.codeLabel">الرقم الذي أدخلته</span>
+        <div class="pair-code" id="pair-pending-code" dir="ltr">------</div>
+        <p class="pair-pending-note" data-i18n="pair.pendingNote">لن تُفتح الكاميرا إلا بعد تأكيد الشاشة.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Diagnostics & link drawer ===================== -->
+  <div class="drawer hidden" id="drawer">
+    <div class="drawer-head">
+      <h2 data-i18n="drawer.title">التشخيص والاتصال</h2>
+      <button class="icon-btn" id="btn-close-drawer" title="Close">✕</button>
+    </div>
+
+    <section class="serial-panel">
+      <h3 data-i18n="drawer.serialTitle">منفذ الأردوينو / بلوتوث HC-05</h3>
+      <div class="serial-row">
+        <select id="port-select"><option value="">—</option></select>
+        <button class="ghost small" id="btn-refresh-ports" data-i18n="drawer.refresh">تحديث المنافذ</button>
+        <button class="ghost small accent" id="btn-connect-serial" data-i18n="drawer.connect">اتصال</button>
+      </div>
+      <p class="field-hint" data-i18n="drawer.portsHint">اقترن بـ HC-05 من إعدادات ويندوز أولاً، ثم اختر المنفذ هنا.</p>
+      <div class="serial-state" id="serial-state">—</div>
+
+      <h4 data-i18n="drawer.logTitle">آخر الأوامر المرسلة</h4>
+      <ul class="cmd-log" id="cmd-log">
+        <li class="muted" data-i18n="drawer.noLog">لا توجد أوامر بعد</li>
+      </ul>
+    </section>
+
+    <section class="serial-panel">
+      <h3 data-i18n="drawer.cloudTitle">الموقع السحابي (tawaf.alk.sa)</h3>
+      <div class="serial-row">
+        <span class="serial-state" id="cloud-state" style="flex:1">—</span>
+        <button class="ghost small" id="btn-cloud-check" data-i18n="drawer.cloudCheck">فحص الموقع</button>
+      </div>
+      <p class="field-hint" data-i18n="drawer.cloudHint">كل إنذار يُرسل إلى /api/alert ويُلغى بـ /api/resolve عند وقوف المصاب.</p>
+    </section>
+
+    <div class="drawer-selftest">
+      <div class="drawer-head">
+        <h2 data-i18n="setup.selftest">اختبار المنطق</h2>
+        <button class="ghost small" id="btn-run-selftest" data-i18n="drawer.run">تشغيل الاختبار الذاتي</button>
+      </div>
+      <pre id="selftest-out" data-i18n="drawer.idle">لم يُشغَّل بعد.</pre>
+    </div>
+
+    <div class="drawer-foot" id="drawer-meta"></div>
+  </div>
+
+  <div class="toast hidden" id="toast"></div>
+</div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
