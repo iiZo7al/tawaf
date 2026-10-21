@@ -1,20 +1,4 @@
-/**
- * Smart Black Stone Guard — browser console
- *
- * Mirrors python/ai_fall_detector.py: same model, same thresholds, same serial
- * commands (F/N/D/C), same cloud alerts and black-box snapshots.  Hardware and
- * cloud calls go through the local bridge (bridge/bridge.py) because a page
- * cannot open a COM port or bypass CORS.
- *
- * Roles
- *   ?role=camera&code=123456   this device owns the camera and runs the AI
- *   ?role=view                 display only; it shows the pairing code
- *   ?lang=en                   English UI and voice (Arabic is the default)
- *
- * The two roles meet through a cloud MQTT broker (web/js/link.js), so they can
- * be on different networks.  The Arduino link stays on the laptop and is
- * reached through the same broker by bridge/bridge.py --agent.
- */
+/* Browser console: camera analysis runs on the camera device; the display receives the stream and controls the Arduino through Web Serial. */
 
 import { PoseLandmarker, FilesetResolver } from "../vendor/vision_bundle.mjs";
 import {
@@ -147,6 +131,7 @@ const state = {
   serial: { connected: false, port: null, error: null },
   serialSeen: false,
   ports: [],
+  serialPort: null,
   warnedVoice: false,
   hintShown: false,
   statusKey: "status.idle",
@@ -263,6 +248,16 @@ function handleCloudMessage(msg) {
       if (performance.now() - state.lastFrameAt > 4000) setStatus("status.viewConnected");
       chip("role", "on", `${t("chip.role.view")} · ${state.pairCode}`);
     }
+    return;
+  }
+  const screenTopic = "bsg/v2/" + state.pairCode + "/scr";
+  const cameraTopic = "bsg/v2/" + state.pairCode + "/cam";
+  if (state.role === "camera" && msg.__topic === screenTopic && msg.type === "control" && msg.action === "simulate") {
+    startSimulationLocal();
+    return;
+  }
+  if (state.role === "view" && msg.__topic === cameraTopic && msg.type === "control" && msg.action === "hardware") {
+    writeSerialCommand(msg.cmd);
     return;
   }
   if (state.role !== "view") return;
@@ -516,33 +511,89 @@ function fillPorts(ports) {
     el.portSelect.appendChild(opt);
     return;
   }
-  for (const p of ports) {
+  ports.forEach((port, index) => {
     const opt = document.createElement("option");
-    opt.value = p.device;
-    opt.textContent = `${p.device}${p.description ? " — " + p.description : ""}`;
-    if (p.device === (previous || state.serial.port)) opt.selected = true;
+    opt.value = String(index);
+    opt.textContent = "Bluetooth / Serial device " + (index + 1);
+    if (String(index) === previous) opt.selected = true;
     el.portSelect.appendChild(opt);
+  });
+}
+
+async function requestPorts() {
+  if (!navigator.serial) {
+    if (el.serialState) el.serialState.textContent = "استخدم Chrome أو Edge على الكمبيوتر للاتصال بـ HC-05.";
+    return;
+  }
+  try {
+    fillPorts(await navigator.serial.getPorts());
+  } catch (err) {
+    if (el.serialState) el.serialState.textContent = "تعذر عرض المنافذ: " + (err && err.message || "خطأ");
   }
 }
 
-function requestPorts() {
-  // The Arduino agent on the laptop answers through the cloud broker.
-  link?.sendHardware({ type: "list_ports" });
+async function connectBrowserSerial() {
+  if (!navigator.serial) {
+    toast("اتصال البلوتوث من الموقع يحتاج Chrome أو Edge على الكمبيوتر.", true);
+    return;
+  }
+  try {
+    const authorized = await navigator.serial.getPorts();
+    const selectedIndex = Number(el.portSelect.value);
+    const port = Number.isInteger(selectedIndex) ? authorized[selectedIndex] : null;
+    state.serialPort = port || await navigator.serial.requestPort();
+    if (!state.serialPort.readable && !state.serialPort.writable) await state.serialPort.open({ baudRate: 9600 });
+    state.serial.connected = true;
+    state.serial.port = "HC-05";
+    applySerialStatus(state.serial);
+    if (el.serialState) el.serialState.textContent = "متصل بـ HC-05 من المتصفح";
+    state.serialPort.addEventListener("disconnect", () => {
+      state.serial.connected = false;
+      state.serialPort = null;
+      applySerialStatus({ connected: false, error: "انقطع اتصال HC-05" });
+    }, { once: true });
+    toast("اتصل الموقع بالأردوينو عبر HC-05.");
+    await requestPorts();
+  } catch (err) {
+    if (err && err.name !== "NotFoundError") toast("تعذر الاتصال: " + (err.message || "خطأ"), true);
+  }
+}
+
+async function writeSerialCommand(cmd) {
+  if (!state.serialPort || !state.serialPort.writable) {
+    if (state.role === "view") toast("اتصل بـ HC-05 من إعدادات الموقع أولاً.", true);
+    return false;
+  }
+  try {
+    const writer = state.serialPort.writable.getWriter();
+    await writer.write(new TextEncoder().encode(String(cmd)));
+    writer.releaseLock();
+    logCommand(cmd, true);
+    return true;
+  } catch (err) {
+    logCommand(cmd, false);
+    if (el.serialState) el.serialState.textContent = "انقطع اتصال HC-05: " + (err && err.message || "خطأ");
+    return false;
+  }
 }
 
 function logCommand(cmd, ok) {
+  if (!el.cmdLog) return;
   const empty = el.cmdLog.querySelector(".muted");
   if (empty) empty.remove();
   const li = document.createElement("li");
   if (!ok) li.classList.add("fail");
-  const port = state.serial.port || "—";
-  li.textContent = `${new Date().toLocaleTimeString("en-GB")}  ${cmd} → ${port}  ${ok ? "ok" : "no link"}`;
+  li.textContent = new Date().toLocaleTimeString("en-GB") + "  " + cmd + " → " + (state.serial.port || "HC-05") + "  " + (ok ? "ok" : "no link");
   el.cmdLog.prepend(li);
   while (el.cmdLog.children.length > 8) el.cmdLog.lastElementChild.remove();
 }
 
 function hardware(cmd) {
-  link?.sendHardware({ type: "cmd", cmd });
+  if (state.role === "view" || state.mode === "both") {
+    writeSerialCommand(cmd);
+    return;
+  }
+  if (link && state.pairCode) link.send({ type: "control", action: "hardware", cmd });
 }
 
 // ---------------------------------------------------------------------------
@@ -1428,21 +1479,23 @@ function toggleVoice() {
   document.querySelector('[data-key="v"]')?.classList.toggle("active", state.voice);
 }
 
-function runSimulation() {
-  if (state.role !== "camera") {
-    toast(t("toast.viewerOnly"), true);
-    return;
-  }
+function startSimulationLocal() {
   state.simStart = performance.now();
   state.simUntil = state.simStart + 7600;
   toast(t("toast.sim"));
 }
 
-function lampTest() {
-  if (state.role !== "camera") {
-    toast(t("toast.viewerOnly"), true);
+function runSimulation() {
+  if (state.role === "view") {
+    if (!link || !link.send({ type: "control", action: "simulate" })) toast("الكاميرا غير متصلة؛ لم يبدأ الاختبار.", true);
+    else toast("أُرسل اختبار المحاكاة إلى جهاز الكاميرا.");
     return;
   }
+  if (state.role === "camera") startSimulationLocal();
+}
+
+function lampTest() {
+  if (state.role !== "view" && state.role !== "camera") return;
   state.lampTestUntil = performance.now() + 4000;
   state.dark = true;
   hardware("D");
@@ -1513,12 +1566,7 @@ function bindControls() {
     el.portSelect.focus();
   });
   el.btnRefreshPorts.addEventListener("click", requestPorts);
-  el.btnConnectSerial.addEventListener("click", () => {
-    const port = el.portSelect.value || "";
-    el.serialState.textContent = t("serial.connecting");
-    link?.sendHardware({ type: "connect_serial", port });
-    toast(port ? t("serial.connecting") : t("serial.noport"));
-  });
+  el.btnConnectSerial.addEventListener("click", connectBrowserSerial);
 
   el.pairInput?.addEventListener("input", () => {
     const clean = normalizeCode(el.pairInput.value);
@@ -1750,12 +1798,7 @@ async function boot() {
     chip("ai", "off", "", "chip.ai.idle");
     chip("cloud", "off", "", "chip.cloud.ready");
     chip("serial", "off", "", "chip.serial.connecting");
-    setTimeout(() => {
-      if (state.serialSeen) return;
-      chip("serial", "off", "", "chip.serial.agentOff");
-      if (el.serialState) el.serialState.textContent = t("serial.agentOff");
-      if (el.portSelect) el.portSelect.innerHTML = `<option value="">${t("serial.agentOff")}</option>`;
-    }, 8000);
+    requestPorts();
     try {
       const count = await listCameras();
       if (!count) showSetupNote(t("setup.note.noCamera"));
