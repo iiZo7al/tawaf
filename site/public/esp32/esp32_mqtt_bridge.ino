@@ -34,8 +34,8 @@ unsigned long lastStatus = 0;
 void publishStatus(bool online) {
   char payload[128];
   snprintf(payload, sizeof(payload),
-    "{\"device\":\"tawaf-esp32\",\"online\":%s,\"ts\":%lu}",
-    online ? "true" : "false", (unsigned long)(millis() / 1000));
+    "{\"device\":\"tawaf-esp32\",\"online\":%s}",
+    online ? "true" : "false");
   mqtt.publish(STATUS_TOPIC, payload, true);
 }
 
