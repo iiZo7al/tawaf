@@ -1062,9 +1062,13 @@ async function openPendingCamera() {
     const stream = await openCamera(el.deviceSelect.value || "");
     await attachStream(stream);
   } catch (err) {
-    backToSetup(t("toast.cameraError", { err: err.message }), true);
-    setStatus("status.cameraFailed");
+    setStatus("status.pairPending", { code: state.pairCode });
     showSetupNote(t("setup.note.cameraBlocked"));
+    clearTimeout(openPendingCamera._retry);
+    openPendingCamera._retry = setTimeout(() => {
+      if (state.pairAck && !state.running) openPendingCamera();
+    }, 1500);
+    state.running = false;
     return;
   }
 
@@ -1530,6 +1534,7 @@ function bindControls() {
       btn.classList.add("selected");
       const chosen = btn.dataset.role;
       state.mode = chosen;
+      state.role = chosen === "view" ? "view" : "camera";
       applyModeShell();
       el.deviceRow.style.display = chosen === "view" ? "none" : "";
       if (el.pairRow) el.pairRow.style.display = chosen === "view" ? "none" : "";
@@ -1552,6 +1557,7 @@ function bindControls() {
   el.btnStart.addEventListener("click", async () => {
     const chosen = document.querySelector(".role.selected")?.dataset.role || "camera";
     state.mode = chosen;
+    state.role = chosen === "view" ? "view" : "camera";
     applyModeShell();
     if (chosen === "view") {
       startViewerRole();
