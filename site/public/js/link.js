@@ -22,8 +22,8 @@ export const HW_CMD_TOPIC = `bsg/v2/hw/${ROBOT_ID}/cmd`;
 
 // Keep broker order identical on both devices; try the backup if the first is down.
 export const BROKERS = [
+  // Pairing uses a single broker so the phone and display always share a room.
   "wss://broker.emqx.io:8084/mqtt",
-  "wss://broker.hivemq.com:8884/mqtt",
 ];
 
 const TOPIC_ROOT = "bsg/v2";
