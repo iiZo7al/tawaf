@@ -219,6 +219,9 @@ function initCloud() {
 
 function applyCloudState(next) {
   state.linkState = next;
+  if (state.mode === "camera" && state.pairPending && next !== "online") {
+    setStatus("status.pairPending", { code: state.pairCode });
+  }
   if (next === "online") {
     chip("cloud", "on", "", "chip.cloud.ready");
   } else if (next === "connecting") {
@@ -1049,6 +1052,11 @@ function backToSetup(message, isError = false) {
 }
 
 async function openPendingCamera() {
+  if (state.linkState !== "online" || !state.pairAck) {
+    showPairPending();
+    setStatus("status.pairPending", { code: state.pairCode });
+    return;
+  }
   state.running = true;
   state.startedAt = performance.now();
   el.setup.classList.add("hidden");
