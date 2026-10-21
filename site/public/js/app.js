@@ -255,6 +255,8 @@ function handleCloudMessage(msg) {
     } else if (state.role === "view" && msg.mode === "camera") {
       // Don't overwrite the live status on every heartbeat once frames flow.
       if (performance.now() - state.lastFrameAt > 4000) setStatus("status.viewConnected");
+      state.viewers = 1;
+      chip("role", "on", `${t("chip.role.view")} · ${state.pairCode}`);
     }
     return;
   }
@@ -1001,10 +1003,9 @@ async function startCameraRole() {
     el.setup.classList.add("hidden");
     showPairPending();
     clearTimeout(startCameraRole._timeout);
+    // Keep the camera on the confirmation screen while the display reconnects.
     startCameraRole._timeout = setTimeout(() => {
-      if (!state.pairPending) return;
-      state.pairPending = false;
-      backToSetup(t("pair.failed"), true);
+      if (state.pairPending) setStatus("status.pairPending", { code: state.pairCode });
     }, 45000);
     if (state.linkState !== "online") toast(t("toast.cloudOffline"), true);
     return;
@@ -1524,7 +1525,7 @@ function bindControls() {
   });
 
   document.querySelectorAll(".role").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
       document.querySelectorAll(".role").forEach((b) => b.classList.remove("selected"));
       btn.classList.add("selected");
       const chosen = btn.dataset.role;
@@ -1535,6 +1536,16 @@ function bindControls() {
       el.btnStart.textContent = t(
         chosen === "view" ? "setup.startView" : chosen === "both" ? "setup.startBoth" : "setup.start"
       );
+      if (chosen === "camera" && navigator.mediaDevices?.getUserMedia) {
+        try {
+          const preview = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          preview.getTracks().forEach((track) => track.stop());
+          await listCameras();
+        } catch {
+          showSetupNote(t("setup.note.cameraBlocked"));
+          setStatus("status.cameraFailed");
+        }
+      }
     });
   });
 
