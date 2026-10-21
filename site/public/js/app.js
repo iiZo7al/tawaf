@@ -205,6 +205,7 @@ function renderStatus() {
 let link = null;
 let esp32Client = null;
 let esp32LastSeenAt = 0;
+let esp32HeartbeatTimer = null;
 
 function initCloud() {
   link = new CloudLink({ onMessage: handleCloudMessage, onState: applyCloudState });
@@ -602,14 +603,16 @@ async function connectEsp32Broker() {
     esp32Client = client;
     client.on("connect", () => {
       esp32LastSeenAt = 0;
+      clearInterval(esp32HeartbeatTimer);
+      esp32HeartbeatTimer = setInterval(refreshEsp32Heartbeat, 5000);
       client.subscribe("tawaf/esp32/status", { qos: 0 });
       if (el.esp32State) {
         el.esp32State.textContent = "متصل بالوسيط؛ بانتظار ESP32";
         el.esp32State.classList.remove("bad");
       }
     });
-    client.on("message", (topic, payload) => {
-      if (topic !== "tawaf/esp32/status") return;
+    client.on("message", (topic, payload, packet) => {
+      if (topic !== "tawaf/esp32/status" || packet?.retain) return;
       let msg;
       try { msg = JSON.parse(payload.toString()); } catch { return; }
       const online = msg.device === "tawaf-esp32" && msg.online === true;
@@ -633,6 +636,7 @@ async function connectEsp32Broker() {
     });
     client.on("close", () => {
       if (esp32Client === client && el.esp32State) {
+        clearInterval(esp32HeartbeatTimer);
         esp32LastSeenAt = 0;
         el.esp32State.textContent = "انقطع اتصال وسيط ESP32";
         el.esp32State.classList.remove("on");
@@ -648,6 +652,7 @@ async function connectEsp32Broker() {
 function disconnectEsp32Broker(showToast = true) {
   const client = esp32Client;
   esp32Client = null;
+  clearInterval(esp32HeartbeatTimer);
   try { client?.end(true); } catch {}
   if (el.esp32State) {
     el.esp32State.textContent = "ESP32 غير متصلة";
