@@ -86,7 +86,7 @@ const el = {
 const params = new URLSearchParams(location.search);
 // three modes: camera (no interface) · view (display only) · both (full interface)
 const MODE_PARAM = params.get("role");
-const initialMode = MODE_PARAM === "view" ? "view" : MODE_PARAM === "both" ? "both" : "camera";
+const initialMode = MODE_PARAM === "view" ? "view" : "camera";
 const role = initialMode === "view" ? "view" : "camera";
 
 // ---------------------------------------------------------------------------
@@ -696,7 +696,7 @@ function applySoloMode() {
   badge.classList.toggle("hidden", !solo);
   if (!solo) return;
   const online = state.linkState === "online";
-  const paired = online && (!state.pairCode || state.mode === "both" || state.viewers > 0);
+  const paired = online && (!state.pairCode || state.viewers > 0);
   if (!online) soloBadge("solo.connecting", "warn");
   else if (paired) soloBadge("solo.connected");
   else soloBadge("solo.waiting", "warn");
@@ -1043,7 +1043,7 @@ function timeFromFilename(name) {
 // ---------------------------------------------------------------------------
 async function startCameraRole() {
   const code = normalizeCode(el.pairInput?.value || params.get("code") || "");
-  if (state.mode !== "both" && code.length !== 6) {
+  if (code.length !== 6) {
     toast(t("toast.pairRequired"), true);
     el.pairInput?.focus();
     return;
@@ -1599,7 +1599,7 @@ function bindControls() {
       el.deviceRow.style.display = chosen === "view" ? "none" : "";
       if (el.pairRow) el.pairRow.style.display = chosen === "view" ? "none" : "";
       el.btnStart.textContent = t(
-        chosen === "view" ? "setup.startView" : chosen === "both" ? "setup.startBoth" : "setup.start"
+        chosen === "view" ? "setup.startView" : "setup.start"
       );
       if (chosen === "camera" && navigator.mediaDevices?.getUserMedia) {
         try {
@@ -1736,7 +1736,7 @@ function refreshTranslations() {
   renderStatus();
   Object.keys(chipState).forEach(renderChip);
   el.btnStart.textContent = t(
-    state.mode === "view" ? "setup.startView" : state.mode === "both" ? "setup.startBoth" : "setup.start"
+    state.mode === "view" ? "setup.startView" : "setup.start"
   );
   el.lampText.textContent = t(state.dark ? "lamp.onShort" : "lamp.idle");
   applyTheme(document.documentElement.dataset.theme || "dark");
@@ -1786,7 +1786,7 @@ async function boot() {
     el.deviceRow.style.display = initialMode === "view" ? "none" : "";
     if (el.pairRow) el.pairRow.style.display = initialMode === "view" ? "none" : "";
     el.btnStart.textContent = t(
-      initialMode === "view" ? "setup.startView" : initialMode === "both" ? "setup.startBoth" : "setup.start"
+      initialMode === "view" ? "setup.startView" : "setup.start"
     );
   }
 
