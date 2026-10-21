@@ -74,12 +74,6 @@ const el = {
   selftestOut: $("selftest-out"),
   drawerMeta: $("drawer-meta"),
   portSelect: $("port-select"),
-  esp32Host: $("esp32-host"),
-  esp32User: $("esp32-user"),
-  esp32Password: $("esp32-password"),
-  esp32State: $("esp32-state"),
-  btnEsp32Connect: $("btn-esp32-connect"),
-  btnEsp32Disconnect: $("btn-esp32-disconnect"),
   serialState: $("serial-state"),
   cloudState: $("cloud-state"),
   btnCloudCheck: $("btn-cloud-check"),
@@ -203,9 +197,6 @@ function renderStatus() {
 // Cloud link — pairing by six-digit code (MQTT over WSS)
 // ---------------------------------------------------------------------------
 let link = null;
-let esp32Client = null;
-let esp32LastSeenAt = 0;
-let esp32HeartbeatTimer = null;
 
 function initCloud() {
   link = new CloudLink({ onMessage: handleCloudMessage, onState: applyCloudState });
@@ -568,116 +559,6 @@ async function connectBrowserSerial() {
   }
 }
 
-function refreshEsp32Heartbeat() {
-  if (!esp32Client?.connected || !el.esp32State) return;
-  const online = esp32LastSeenAt && performance.now() - esp32LastSeenAt < 16000;
-  if (!online) {
-    el.esp32State.textContent = "الوسيط متصل؛ بانتظار ESP32";
-    el.esp32State.classList.remove("on");
-  }
-}
-
-async function connectEsp32Broker() {
-  const url = el.esp32Host?.value.trim();
-  const username = el.esp32User?.value.trim();
-  const password = el.esp32Password?.value || "";
-  if (!url || !/^wss:\/\//i.test(url)) {
-    toast("أدخل عنوان وسيط MQTT يبدأ بـ wss://.", true);
-    el.esp32Host?.focus();
-    return;
-  }
-  if (!username || !password) {
-    toast("أدخل اسم المستخدم وكلمة المرور المخصصين للوحة ESP32.", true);
-    return;
-  }
-  try {
-    const mqtt = (await import("../vendor/mqtt.esm.js")).default;
-    disconnectEsp32Broker(false);
-    if (el.esp32State) el.esp32State.textContent = "جارٍ الاتصال بوسيط ESP32…";
-    const client = mqtt.connect(url, {
-      username, password,
-      clientId: `tawaf-web-${crypto.randomUUID().slice(0, 12)}`,
-      clean: true, connectTimeout: 10000, reconnectPeriod: 3000,
-      protocolVersion: 4,
-    });
-    esp32Client = client;
-    client.on("connect", () => {
-      esp32LastSeenAt = 0;
-      clearInterval(esp32HeartbeatTimer);
-      esp32HeartbeatTimer = setInterval(refreshEsp32Heartbeat, 5000);
-      client.subscribe("tawaf/esp32/status", { qos: 0 });
-      if (el.esp32State) {
-        el.esp32State.textContent = "متصل بالوسيط؛ بانتظار ESP32";
-        el.esp32State.classList.remove("bad");
-      }
-    });
-    client.on("message", (topic, payload, packet) => {
-      if (topic !== "tawaf/esp32/status" || packet?.retain) return;
-      let msg;
-      try { msg = JSON.parse(payload.toString()); } catch { return; }
-      const online = msg.device === "tawaf-esp32" && msg.online === true;
-      if (online) esp32LastSeenAt = performance.now();
-      if (el.esp32State) {
-        el.esp32State.textContent = online ? "ESP32 متصلة بالأردوينو" : "الوسيط متصل؛ ESP32 غير متصلة";
-        el.esp32State.classList.toggle("on", online);
-        el.esp32State.classList.toggle("bad", !online);
-      }
-      if (online) {
-        state.serial.connected = true;
-        state.serial.port = "ESP32";
-        chip("serial", "on", "ESP32");
-      }
-    });
-    client.on("error", (err) => {
-      if (el.esp32State) {
-        el.esp32State.textContent = "تعذر اتصال ESP32: " + (err.message || "خطأ");
-        el.esp32State.classList.add("bad");
-      }
-    });
-    client.on("close", () => {
-      if (esp32Client === client && el.esp32State) {
-        clearInterval(esp32HeartbeatTimer);
-        esp32LastSeenAt = 0;
-        el.esp32State.textContent = "انقطع اتصال وسيط ESP32";
-        el.esp32State.classList.remove("on");
-        el.esp32State.classList.add("bad");
-      }
-    });
-    localStorage.setItem("tawaf.esp32.mqtt", JSON.stringify({ url, username }));
-  } catch (err) {
-    toast("تعذر بدء اتصال ESP32: " + (err.message || "خطأ"), true);
-  }
-}
-
-function disconnectEsp32Broker(showToast = true) {
-  const client = esp32Client;
-  esp32Client = null;
-  clearInterval(esp32HeartbeatTimer);
-  try { client?.end(true); } catch {}
-  if (el.esp32State) {
-    el.esp32State.textContent = "ESP32 غير متصلة";
-    el.esp32State.classList.remove("on");
-  }
-  if (showToast) toast("تم فصل ESP32.");
-}
-
-function publishEsp32Command(cmd) {
-  if (!esp32Client?.connected) return false;
-  const command = String(cmd);
-  esp32Client.publish("tawaf/esp32/cmd", JSON.stringify({ device: "tawaf-esp32", command, ts: Date.now() }), { qos: 0 });
-  logCommand(command, true);
-  return true;
-}
-
-function restoreEsp32Settings() {
-  try {
-    const saved = JSON.parse(localStorage.getItem("tawaf.esp32.mqtt") || "null");
-    if (saved && el.esp32Host) el.esp32Host.value = saved.url || "";
-    if (saved && el.esp32User) el.esp32User.value = saved.username || "";
-
-  } catch {}
-}
-
 async function writeSerialCommand(cmd) {
   if (esp32Client?.connected) return publishEsp32Command(cmd);
   if (!state.serialPort || !state.serialPort.writable) {
@@ -710,7 +591,13 @@ function logCommand(cmd, ok) {
 
 function hardware(cmd) {
   if (state.role === "view" || state.mode === "both") {
-    writeSerialCommand(cmd);
+    if (state.serialPort?.writable) {
+      writeSerialCommand(cmd);
+      return;
+    }
+    const sent = link?.sendHardware({ type: "command", cmd });
+    logCommand(cmd, Boolean(sent));
+    if (!sent) toast("السحابة غير متصلة؛ لم يُرسل أمر الأردوينو.", true);
     return;
   }
   if (link && state.pairCode) link.send({ type: "control", action: "hardware", cmd });
@@ -1694,8 +1581,6 @@ function bindControls() {
   });
   el.btnRefreshPorts.addEventListener("click", requestPorts);
   el.btnConnectSerial.addEventListener("click", connectBrowserSerial);
-  el.btnEsp32Connect?.addEventListener("click", connectEsp32Broker);
-  el.btnEsp32Disconnect?.addEventListener("click", disconnectEsp32Broker);
 
   el.pairInput?.addEventListener("input", () => {
     const clean = normalizeCode(el.pairInput.value);
@@ -1890,7 +1775,6 @@ function refreshTranslations() {
 async function boot() {
   initTheme();
   applyStatic();
-  restoreEsp32Settings();
   bindControls();
   initShareLinks();
   initSoloBadge();
