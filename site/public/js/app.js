@@ -136,6 +136,7 @@ const state = {
   lastFrameSent: 0,
   viewers: 0,
   lastScreenAt: 0,
+  lastCameraAt: 0,
   pairCode: "",
   pairAck: false,
   pairPending: false,
@@ -256,9 +257,10 @@ function handleCloudMessage(msg) {
         openPendingCamera();
       }
     } else if (state.role === "view" && msg.mode === "camera") {
-      // Don't overwrite the live status on every heartbeat once frames flow.
-      if (performance.now() - state.lastFrameAt > 4000) setStatus("status.viewConnected");
+      state.lastCameraAt = performance.now();
       state.viewers = 1;
+      el.waiting.classList.add("hidden");
+      if (performance.now() - state.lastFrameAt > 4000) setStatus("status.viewConnected");
       chip("role", "on", `${t("chip.role.view")} · ${state.pairCode}`);
     }
     return;
@@ -1390,9 +1392,11 @@ function startViewerRole() {
   setStatus("status.viewWait");
   state.running = true;
   setInterval(() => {
-    if (performance.now() - state.lastFrameAt > 4000) {
+    const cameraOnline = state.lastCameraAt > 0 && performance.now() - state.lastCameraAt < 5000;
+    if (!cameraOnline && performance.now() - state.lastFrameAt > 4000) {
       el.waiting.classList.remove("hidden");
       renderWaitingCode();
+      setStatus("status.viewWait");
     }
   }, 1200);
 }
