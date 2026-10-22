@@ -95,7 +95,11 @@ void handleCommand(char cmd) {
     lampOn = true;
     digitalWrite(PIN_LAMP, HIGH);
   }
-  else if (cmd == 'C' || cmd == 'c') {   // Clear → Lamp OFF
+  else if (cmd == 'O' || cmd == 'o') {   // Dedicated command: darkness lamp OFF
+    lampOn = false;
+    digitalWrite(PIN_LAMP, LOW);
+  }
+  else if (cmd == 'C' || cmd == 'c') {   // Backward-compatible lamp OFF
     lampOn = false;
     digitalWrite(PIN_LAMP, LOW);
   }
