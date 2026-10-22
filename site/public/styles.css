@@ -268,21 +268,6 @@ body.hud-off .hud { opacity: 0; pointer-events: none; }
 }
 .rail-list { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
 .rail-empty { font-size: 10.5px; color: #61748c; margin: 4px 0; line-height: 1.7; }
-.shot {
-  position: relative;
-  border-radius: 10px;
-  overflow: hidden;
-  border: 1px solid rgba(90, 130, 170, 0.3);
-  background: #0b1220;
-  aspect-ratio: 16 / 10;
-}
-.shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.shot time {
-  position: absolute; bottom: 0; inset-inline: 0;
-  font-size: 9.5px; padding: 3px 6px;
-  background: linear-gradient(transparent, rgba(0, 0, 0, 0.85));
-  direction: ltr; text-align: start;
-}
 
 /* ------------------------------ bottombar ------------------------------- */
 .bottombar {
@@ -810,9 +795,6 @@ body.hud-off .stage { cursor: zoom-out; }
   font-size: 16px;
   cursor: pointer;
 }
-.shot { cursor: zoom-in; }
-.shot:hover { border-color: rgba(46, 230, 200, 0.6); }
-
 .hidden { display: none !important; }
 .hidden-soft { visibility: hidden; }
 
@@ -885,11 +867,14 @@ body.hud-off .stage { cursor: zoom-out; }
 
 
 
-/* Camera switch chip sits beside the status pills in dashboard modes. */
-.camera-switch { display: flex; align-items: center; gap: 8px; opacity: 0; pointer-events: none; transition: opacity .2s ease; }
-.topbar:hover .camera-switch, .camera-switch:focus-within { opacity: 1; pointer-events: auto; }
+/* Camera switch stays visible beside the status pills in dashboard modes. */
+.camera-switch { display: flex; align-items: center; gap: 8px; opacity: 1; pointer-events: auto; }
 .camera-switch-btn { cursor: pointer; font: inherit; }
 .camera-switch-btn:hover { border-color: var(--teal); }
 .camera-switch select:not([hidden]) { max-width: min(240px, 48vw); padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--glass-strong); color: var(--text); font: inherit; font-size: 11.5px; }
 body.cam-shell .camera-switch { display: none; }
-@media (hover: none) { .camera-switch { opacity: 1; pointer-events: auto; } }
+
+/* Black box keeps incident timestamps and labels without image thumbnails. */
+.incident-entry { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: rgba(12, 20, 32, 0.48); font-size: 10px; color: var(--text); }
+.incident-entry span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.incident-entry time { flex: none; color: var(--muted); font-size: 9px; direction: ltr; }

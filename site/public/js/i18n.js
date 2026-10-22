@@ -62,6 +62,7 @@ const STRINGS = {
 
     "rail.title": "الصندوق الأسود",
     "rail.empty": "لا توجد حوادث مسجّلة بعد",
+    "rail.incident": "حادثة",
 
     "ctl.fullscreen": "ملء الشاشة",
     "ctl.hud": "الواجهة",
@@ -262,6 +263,7 @@ const STRINGS = {
 
     "rail.title": "Black box",
     "rail.empty": "No incidents recorded yet",
+    "rail.incident": "Incident",
 
     "ctl.fullscreen": "Fullscreen",
     "ctl.hud": "HUD",

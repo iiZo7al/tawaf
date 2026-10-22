@@ -993,22 +993,17 @@ function takeSnapshot(reason) {
   }
 }
 
-function addShot(url, reason, stamp) {
+function addShot(_url, reason, stamp) {
   const empty = el.railList.querySelector(".rail-empty");
   if (empty) empty.remove();
-  const box = document.createElement("figure");
-  box.className = "shot";
-  box.style.margin = "0";
-  const img = document.createElement("img");
-  img.src = url;
-  img.alt = reason || "incident";
-  img.loading = "lazy";
+  const entry = document.createElement("div");
+  entry.className = "incident-entry";
+  const label = document.createElement("span");
+  label.textContent = (reason && translateReason(reason)) || t("rail.incident");
   const time = document.createElement("time");
-  time.textContent = stamp || new Date().toLocaleTimeString("en-GB");
-  box.append(img, time);
-  // Click a capture to open it large — same gesture as the live video.
-  box.addEventListener("click", () => openShot(url, time.textContent));
-  el.railList.prepend(box);
+  time.textContent = stamp || new Date().toLocaleTimeString(getLang() === "ar" ? "ar-SA" : "en-GB");
+  entry.append(label, time);
+  el.railList.prepend(entry);
   while (el.railList.children.length > 8) el.railList.lastElementChild.remove();
 }
 
