@@ -130,6 +130,7 @@ const state = {
   startedAt: 0,
   serial: { connected: false, port: null, error: null },
   serialSeen: false,
+  serialStatusAt: 0,
   ports: [],
   serialPort: null,
   warnedVoice: false,
@@ -282,6 +283,7 @@ function handleHardwareState(msg) {
       return;
     }
     state.serialSeen = true;
+    state.serialStatusAt = Date.now();
     applySerialStatus(msg);
   } else if (msg.type === "ports") {
     fillPorts(msg.ports || []);
@@ -560,21 +562,32 @@ async function connectBrowserSerial() {
 }
 
 async function writeSerialCommand(cmd) {
-  if (esp32Client?.connected) return publishEsp32Command(cmd);
-  if (!state.serialPort || !state.serialPort.writable) {
+  if (!state.serialPort?.writable) {
+    const agentReady = state.serialSeen
+      && state.serial?.connected
+      && Date.now() - state.serialStatusAt <= 20000;
+    if (agentReady) {
+      const sent = link?.sendHardware({ type: "cmd", cmd });
+      logCommand(cmd, Boolean(sent));
+      if (!sent) toast("تعذر إرسال أمر الأردوينو عبر السحابة.", true);
+      return Boolean(sent);
+    }
+    logCommand(cmd, false);
     if (state.role === "view") toast("اتصل بـ HC-05 أو ESP32 من إعدادات الموقع أولاً.", true);
     return false;
   }
+  let writer;
   try {
-    const writer = state.serialPort.writable.getWriter();
+    writer = state.serialPort.writable.getWriter();
     await writer.write(new TextEncoder().encode(String(cmd)));
-    writer.releaseLock();
     logCommand(cmd, true);
     return true;
   } catch (err) {
     logCommand(cmd, false);
     if (el.serialState) el.serialState.textContent = "انقطع اتصال HC-05: " + (err && err.message || "خطأ");
     return false;
+  } finally {
+    writer?.releaseLock();
   }
 }
 
@@ -584,20 +597,14 @@ function logCommand(cmd, ok) {
   if (empty) empty.remove();
   const li = document.createElement("li");
   if (!ok) li.classList.add("fail");
-  li.textContent = new Date().toLocaleTimeString("en-GB") + "  " + cmd + " → " + (state.serial.port || "HC-05") + "  " + (ok ? "ok" : "no link");
+  li.textContent = new Date().toLocaleTimeString("en-GB") + "  " + cmd + " → " + (state.serial.port || "HC-05") + "  " + (ok ? "sent (not confirmed by robot)" : "no link");
   el.cmdLog.prepend(li);
   while (el.cmdLog.children.length > 8) el.cmdLog.lastElementChild.remove();
 }
 
 function hardware(cmd) {
   if (state.role === "view" || state.mode === "both") {
-    if (state.serialPort?.writable) {
-      writeSerialCommand(cmd);
-      return;
-    }
-    const sent = link?.sendHardware({ type: "command", cmd });
-    logCommand(cmd, Boolean(sent));
-    if (!sent) toast("السحابة غير متصلة؛ لم يُرسل أمر الأردوينو.", true);
+    writeSerialCommand(cmd);
     return;
   }
   if (link && state.pairCode) link.send({ type: "control", action: "hardware", cmd });

@@ -1,20 +1,4 @@
-/**
- * Smart Black Stone Guard — browser console
- *
- * Mirrors python/ai_fall_detector.py: same model, same thresholds, same serial
- * commands (F/N/D/C), same cloud alerts and black-box snapshots.  Hardware and
- * cloud calls go through the local bridge (bridge/bridge.py) because a page
- * cannot open a COM port or bypass CORS.
- *
- * Roles
- *   ?role=camera&code=123456   this device owns the camera and runs the AI
- *   ?role=view                 display only; it shows the pairing code
- *   ?lang=en                   English UI and voice (Arabic is the default)
- *
- * The two roles meet through a cloud MQTT broker (web/js/link.js), so they can
- * be on different networks.  The Arduino link stays on the laptop and is
- * reached through the same broker by bridge/bridge.py --agent.
- */
+/* Browser console: camera analysis runs on the camera device; the display receives the stream and controls the Arduino through Web Serial. */
 
 import { PoseLandmarker, FilesetResolver } from "../vendor/vision_bundle.mjs";
 import {
@@ -136,6 +120,7 @@ const state = {
   lastFrameSent: 0,
   viewers: 0,
   lastScreenAt: 0,
+  lastCameraAt: 0,
   pairCode: "",
   pairAck: false,
   pairPending: false,
@@ -145,7 +130,9 @@ const state = {
   startedAt: 0,
   serial: { connected: false, port: null, error: null },
   serialSeen: false,
+  serialStatusAt: 0,
   ports: [],
+  serialPort: null,
   warnedVoice: false,
   hintShown: false,
   statusKey: "status.idle",
@@ -219,6 +206,9 @@ function initCloud() {
 
 function applyCloudState(next) {
   state.linkState = next;
+  if (state.mode === "camera" && state.pairPending && next !== "online") {
+    setStatus("status.pairPending", { code: state.pairCode });
+  }
   if (next === "online") {
     chip("cloud", "on", "", "chip.cloud.ready");
   } else if (next === "connecting") {
@@ -253,9 +243,22 @@ function handleCloudMessage(msg) {
         openPendingCamera();
       }
     } else if (state.role === "view" && msg.mode === "camera") {
-      // Don't overwrite the live status on every heartbeat once frames flow.
+      state.lastCameraAt = performance.now();
+      state.viewers = 1;
+      el.waiting.classList.add("hidden");
       if (performance.now() - state.lastFrameAt > 4000) setStatus("status.viewConnected");
+      chip("role", "on", `${t("chip.role.view")} · ${state.pairCode}`);
     }
+    return;
+  }
+  const screenTopic = "bsg/v2/" + state.pairCode + "/scr";
+  const cameraTopic = "bsg/v2/" + state.pairCode + "/cam";
+  if (state.role === "camera" && msg.__topic === screenTopic && msg.type === "control" && msg.action === "simulate") {
+    startSimulationLocal();
+    return;
+  }
+  if (state.role === "view" && msg.__topic === cameraTopic && msg.type === "control" && msg.action === "hardware") {
+    writeSerialCommand(msg.cmd);
     return;
   }
   if (state.role !== "view") return;
@@ -280,6 +283,7 @@ function handleHardwareState(msg) {
       return;
     }
     state.serialSeen = true;
+    state.serialStatusAt = Date.now();
     applySerialStatus(msg);
   } else if (msg.type === "ports") {
     fillPorts(msg.ports || []);
@@ -509,33 +513,101 @@ function fillPorts(ports) {
     el.portSelect.appendChild(opt);
     return;
   }
-  for (const p of ports) {
+  ports.forEach((port, index) => {
     const opt = document.createElement("option");
-    opt.value = p.device;
-    opt.textContent = `${p.device}${p.description ? " — " + p.description : ""}`;
-    if (p.device === (previous || state.serial.port)) opt.selected = true;
+    opt.value = String(index);
+    opt.textContent = "Bluetooth / Serial device " + (index + 1);
+    if (String(index) === previous) opt.selected = true;
     el.portSelect.appendChild(opt);
+  });
+}
+
+async function requestPorts() {
+  if (!navigator.serial) {
+    if (el.serialState) el.serialState.textContent = "استخدم Chrome أو Edge على الكمبيوتر للاتصال بـ HC-05.";
+    return;
+  }
+  try {
+    fillPorts(await navigator.serial.getPorts());
+  } catch (err) {
+    if (el.serialState) el.serialState.textContent = "تعذر عرض المنافذ: " + (err && err.message || "خطأ");
   }
 }
 
-function requestPorts() {
-  // The Arduino agent on the laptop answers through the cloud broker.
-  link?.sendHardware({ type: "list_ports" });
+async function connectBrowserSerial() {
+  if (!navigator.serial) {
+    toast("اتصال البلوتوث من الموقع يحتاج Chrome أو Edge على الكمبيوتر.", true);
+    return;
+  }
+  try {
+    const authorized = await navigator.serial.getPorts();
+    const selectedIndex = Number(el.portSelect.value);
+    const port = Number.isInteger(selectedIndex) ? authorized[selectedIndex] : null;
+    state.serialPort = port || await navigator.serial.requestPort();
+    if (!state.serialPort.readable && !state.serialPort.writable) await state.serialPort.open({ baudRate: 9600 });
+    state.serial.connected = true;
+    state.serial.port = "HC-05";
+    applySerialStatus(state.serial);
+    if (el.serialState) el.serialState.textContent = "متصل بـ HC-05 من المتصفح";
+    state.serialPort.addEventListener("disconnect", () => {
+      state.serial.connected = false;
+      state.serialPort = null;
+      applySerialStatus({ connected: false, error: "انقطع اتصال HC-05" });
+    }, { once: true });
+    toast("اتصل الموقع بالأردوينو عبر HC-05.");
+    await requestPorts();
+  } catch (err) {
+    if (err && err.name !== "NotFoundError") toast("تعذر الاتصال: " + (err.message || "خطأ"), true);
+  }
+}
+
+async function writeSerialCommand(cmd) {
+  if (!state.serialPort?.writable) {
+    const agentReady = state.serialSeen
+      && state.serial?.connected
+      && Date.now() - state.serialStatusAt <= 20000;
+    if (agentReady) {
+      const sent = link?.sendHardware({ type: "cmd", cmd });
+      logCommand(cmd, Boolean(sent));
+      if (!sent) toast("تعذر إرسال أمر الأردوينو عبر السحابة.", true);
+      return Boolean(sent);
+    }
+    logCommand(cmd, false);
+    if (state.role === "view") toast("اتصل بـ HC-05 أو ESP32 من إعدادات الموقع أولاً.", true);
+    return false;
+  }
+  let writer;
+  try {
+    writer = state.serialPort.writable.getWriter();
+    await writer.write(new TextEncoder().encode(String(cmd)));
+    logCommand(cmd, true);
+    return true;
+  } catch (err) {
+    logCommand(cmd, false);
+    if (el.serialState) el.serialState.textContent = "انقطع اتصال HC-05: " + (err && err.message || "خطأ");
+    return false;
+  } finally {
+    writer?.releaseLock();
+  }
 }
 
 function logCommand(cmd, ok) {
+  if (!el.cmdLog) return;
   const empty = el.cmdLog.querySelector(".muted");
   if (empty) empty.remove();
   const li = document.createElement("li");
   if (!ok) li.classList.add("fail");
-  const port = state.serial.port || "—";
-  li.textContent = `${new Date().toLocaleTimeString("en-GB")}  ${cmd} → ${port}  ${ok ? "ok" : "no link"}`;
+  li.textContent = new Date().toLocaleTimeString("en-GB") + "  " + cmd + " → " + (state.serial.port || "HC-05") + "  " + (ok ? "sent (not confirmed by robot)" : "no link");
   el.cmdLog.prepend(li);
   while (el.cmdLog.children.length > 8) el.cmdLog.lastElementChild.remove();
 }
 
 function hardware(cmd) {
-  link?.sendHardware({ type: "cmd", cmd });
+  if (state.role === "view" || state.mode === "both") {
+    writeSerialCommand(cmd);
+    return;
+  }
+  if (link && state.pairCode) link.send({ type: "control", action: "hardware", cmd });
 }
 
 // ---------------------------------------------------------------------------
@@ -985,7 +1057,13 @@ function timeFromFilename(name) {
 // ---------------------------------------------------------------------------
 async function startCameraRole() {
   const code = normalizeCode(el.pairInput?.value || params.get("code") || "");
-  if (state.mode !== "both" && code.length !== 6) {
+  if (state.mode === "both") {
+    state.pairCode = "";
+    state.pairAck = true;
+    state.pairPending = false;
+    return openPendingCamera();
+  }
+  if (code.length !== 6) {
     toast(t("toast.pairRequired"), true);
     el.pairInput?.focus();
     return;
@@ -1001,10 +1079,9 @@ async function startCameraRole() {
     el.setup.classList.add("hidden");
     showPairPending();
     clearTimeout(startCameraRole._timeout);
+    // Keep the camera on the confirmation screen while the display reconnects.
     startCameraRole._timeout = setTimeout(() => {
-      if (!state.pairPending) return;
-      state.pairPending = false;
-      backToSetup(t("pair.failed"), true);
+      if (state.pairPending) setStatus("status.pairPending", { code: state.pairCode });
     }, 45000);
     if (state.linkState !== "online") toast(t("toast.cloudOffline"), true);
     return;
@@ -1048,6 +1125,11 @@ function backToSetup(message, isError = false) {
 }
 
 async function openPendingCamera() {
+  if (state.linkState !== "online" || !state.pairAck) {
+    showPairPending();
+    setStatus("status.pairPending", { code: state.pairCode });
+    return;
+  }
   state.running = true;
   state.startedAt = performance.now();
   el.setup.classList.add("hidden");
@@ -1061,9 +1143,13 @@ async function openPendingCamera() {
     const stream = await openCamera(el.deviceSelect.value || "");
     await attachStream(stream);
   } catch (err) {
-    backToSetup(t("toast.cameraError", { err: err.message }), true);
-    setStatus("status.cameraFailed");
+    setStatus("status.pairPending", { code: state.pairCode });
     showSetupNote(t("setup.note.cameraBlocked"));
+    clearTimeout(openPendingCamera._retry);
+    openPendingCamera._retry = setTimeout(() => {
+      if (state.pairAck && !state.running) openPendingCamera();
+    }, 1500);
+    state.running = false;
     return;
   }
 
@@ -1377,9 +1463,11 @@ function startViewerRole() {
   setStatus("status.viewWait");
   state.running = true;
   setInterval(() => {
-    if (performance.now() - state.lastFrameAt > 4000) {
+    const cameraOnline = state.lastCameraAt > 0 && performance.now() - state.lastCameraAt < 5000;
+    if (!cameraOnline && performance.now() - state.lastFrameAt > 4000) {
       el.waiting.classList.remove("hidden");
       renderWaitingCode();
+      setStatus("status.viewWait");
     }
   }, 1200);
 }
@@ -1411,21 +1499,23 @@ function toggleVoice() {
   document.querySelector('[data-key="v"]')?.classList.toggle("active", state.voice);
 }
 
-function runSimulation() {
-  if (state.role !== "camera") {
-    toast(t("toast.viewerOnly"), true);
-    return;
-  }
+function startSimulationLocal() {
   state.simStart = performance.now();
   state.simUntil = state.simStart + 7600;
   toast(t("toast.sim"));
 }
 
-function lampTest() {
-  if (state.role !== "camera") {
-    toast(t("toast.viewerOnly"), true);
+function runSimulation() {
+  if (state.role === "view") {
+    if (!link || !link.send({ type: "control", action: "simulate" })) toast("الكاميرا غير متصلة؛ لم يبدأ الاختبار.", true);
+    else toast("أُرسل اختبار المحاكاة إلى جهاز الكاميرا.");
     return;
   }
+  if (state.role === "camera") startSimulationLocal();
+}
+
+function lampTest() {
+  if (state.role !== "view" && state.role !== "camera") return;
   state.lampTestUntil = performance.now() + 4000;
   state.dark = true;
   hardware("D");
@@ -1485,6 +1575,7 @@ function bindControls() {
     if (!el.drawer.classList.contains("hidden")) {
       requestPorts();
       requestCloudStatus();
+      refreshEsp32Heartbeat();
     }
   });
   el.btnCloudCheck.addEventListener("click", requestCloudStatus);
@@ -1496,12 +1587,7 @@ function bindControls() {
     el.portSelect.focus();
   });
   el.btnRefreshPorts.addEventListener("click", requestPorts);
-  el.btnConnectSerial.addEventListener("click", () => {
-    const port = el.portSelect.value || "";
-    el.serialState.textContent = t("serial.connecting");
-    link?.sendHardware({ type: "connect_serial", port });
-    toast(port ? t("serial.connecting") : t("serial.noport"));
-  });
+  el.btnConnectSerial.addEventListener("click", connectBrowserSerial);
 
   el.pairInput?.addEventListener("input", () => {
     const clean = normalizeCode(el.pairInput.value);
@@ -1524,23 +1610,35 @@ function bindControls() {
   });
 
   document.querySelectorAll(".role").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
       document.querySelectorAll(".role").forEach((b) => b.classList.remove("selected"));
       btn.classList.add("selected");
       const chosen = btn.dataset.role;
       state.mode = chosen;
+      state.role = chosen === "view" ? "view" : "camera";
       applyModeShell();
       el.deviceRow.style.display = chosen === "view" ? "none" : "";
-      if (el.pairRow) el.pairRow.style.display = chosen === "view" ? "none" : "";
+      if (el.pairRow) el.pairRow.style.display = chosen === "view" || chosen === "both" ? "none" : "";
       el.btnStart.textContent = t(
         chosen === "view" ? "setup.startView" : chosen === "both" ? "setup.startBoth" : "setup.start"
       );
+      if (chosen === "camera" && navigator.mediaDevices?.getUserMedia) {
+        try {
+          const preview = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          preview.getTracks().forEach((track) => track.stop());
+          await listCameras();
+        } catch {
+          showSetupNote(t("setup.note.cameraBlocked"));
+          setStatus("status.cameraFailed");
+        }
+      }
     });
   });
 
   el.btnStart.addEventListener("click", async () => {
     const chosen = document.querySelector(".role.selected")?.dataset.role || "camera";
     state.mode = chosen;
+    state.role = chosen === "view" ? "view" : "camera";
     applyModeShell();
     if (chosen === "view") {
       startViewerRole();
@@ -1707,7 +1805,7 @@ async function boot() {
     document.querySelectorAll(".role").forEach((b) => b.classList.remove("selected"));
     preset.classList.add("selected");
     el.deviceRow.style.display = initialMode === "view" ? "none" : "";
-    if (el.pairRow) el.pairRow.style.display = initialMode === "view" ? "none" : "";
+    if (el.pairRow) el.pairRow.style.display = initialMode === "view" || initialMode === "both" ? "none" : "";
     el.btnStart.textContent = t(
       initialMode === "view" ? "setup.startView" : initialMode === "both" ? "setup.startBoth" : "setup.start"
     );
@@ -1721,12 +1819,7 @@ async function boot() {
     chip("ai", "off", "", "chip.ai.idle");
     chip("cloud", "off", "", "chip.cloud.ready");
     chip("serial", "off", "", "chip.serial.connecting");
-    setTimeout(() => {
-      if (state.serialSeen) return;
-      chip("serial", "off", "", "chip.serial.agentOff");
-      if (el.serialState) el.serialState.textContent = t("serial.agentOff");
-      if (el.portSelect) el.portSelect.innerHTML = `<option value="">${t("serial.agentOff")}</option>`;
-    }, 8000);
+    requestPorts();
     try {
       const count = await listCameras();
       if (!count) showSetupNote(t("setup.note.noCamera"));
