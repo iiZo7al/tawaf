@@ -16,10 +16,6 @@
 
   <canvas id="stage" class="stage"></canvas>
   <div class="solo-badge hidden" id="solo-badge"><i></i><span id="solo-text">متصل</span></div>
-  <div class="camera-switch" id="camera-switch">
-    <button class="camera-switch-btn" id="btn-camera-switch" type="button" title="تغيير الكاميرا">📷 <span>تغيير الكاميرا</span></button>
-    <select id="active-camera-select" aria-label="اختيار الكاميرا" hidden><option value="">الكاميرا الافتراضية</option></select>
-  </div>
   <div class="vignette"></div>
 
   <!-- ===================== Top bar ===================== -->
@@ -36,6 +32,10 @@
     </div>
 
     <div class="chips">
+      <div class="camera-switch" id="camera-switch">
+        <button class="chip chip-btn camera-switch-btn" id="btn-camera-switch" type="button" data-i18n-title="camera.switch" title="تغيير الكاميرا"><i></i><b data-i18n="camera.switch">تغيير الكاميرا</b></button>
+        <select id="active-camera-select" data-i18n-aria="camera.select" aria-label="اختيار الكاميرا" hidden><option value="">الكاميرا الافتراضية</option></select>
+      </div>
       <span class="chip" id="chip-role"><i></i><b data-i18n="chip.role">دور</b> <span>—</span></span>
       <span class="chip" id="chip-ai"><i></i><b data-i18n="chip.ai">AI</b> <span>—</span></span>
       <button class="chip chip-btn" id="chip-serial" title="Arduino">
