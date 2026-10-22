@@ -9,10 +9,18 @@
 
 export const LM = {
   NOSE: 0,
+  LEFT_ELBOW: 13,
+  RIGHT_ELBOW: 14,
+  LEFT_WRIST: 15,
+  RIGHT_WRIST: 16,
   LEFT_SHOULDER: 11,
   RIGHT_SHOULDER: 12,
   LEFT_HIP: 23,
   RIGHT_HIP: 24,
+  LEFT_KNEE: 25,
+  RIGHT_KNEE: 26,
+  LEFT_ANKLE: 27,
+  RIGHT_ANKLE: 28,
 };
 
 export const TUNING = {
@@ -21,8 +29,11 @@ export const TUNING = {
   refireCooldown: 0.8,   // seconds before "safe" frames count again
   standCancel: 3.5,      // seconds of standing required to cancel the alert
   heartbeat: 1.5,        // seconds between Arduino watchdog pings
-  minVisibility: 0.35,   // landmark visibility needed for the bounding box
-  minVisibleCount: 6,
+  minVisibility: 0.45,   // confidence needed to include a landmark in the person box
+  minVisibleCount: 8,   // require a body-like set, not a few stray points
+  minCoreVisibility: 0.60,
+  minSupportVisibility: 0.45,
+  minSupportCount: 3,
   uprightAngle: 55,      // torso angle above this reads as upright
   darkThreshold: 110,    // average brightness below this -> lamp on
   brightThreshold: 80,   // hysteresis: above this -> lamp off
@@ -37,8 +48,28 @@ export const TUNING = {
  * @returns {{isFall:boolean, reason:string, torsoAngle:number, standing:boolean, box:?{x:number,y:number,w:number,h:number}}}
  */
 export function classifyPosture(landmarks, w, h) {
-  const out = { isFall: false, reason: '', torsoAngle: 90, standing: false, box: null };
-  if (!landmarks || landmarks.length < 25) return out;
+  const out = { personDetected: false, isFall: false, reason: '', torsoAngle: 90, standing: false, box: null };
+  if (!landmarks || landmarks.length < 29) return out;
+
+  const confidence = (lm) => {
+    if (!lm || !Number.isFinite(lm.x) || !Number.isFinite(lm.y)
+      || lm.x < 0 || lm.x > 1 || lm.y < 0 || lm.y > 1) return 0;
+    const visibility = Number.isFinite(lm.visibility) ? lm.visibility : 0;
+    const presence = Number.isFinite(lm.presence) ? lm.presence : visibility;
+    return Math.min(visibility, presence);
+  };
+  const core = [
+    LM.NOSE, LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER, LM.LEFT_HIP, LM.RIGHT_HIP,
+  ];
+  const support = [
+    LM.LEFT_ELBOW, LM.RIGHT_ELBOW, LM.LEFT_WRIST, LM.RIGHT_WRIST,
+    LM.LEFT_KNEE, LM.RIGHT_KNEE, LM.LEFT_ANKLE, LM.RIGHT_ANKLE,
+  ];
+  if (core.some((index) => confidence(landmarks[index]) < TUNING.minCoreVisibility)) return out;
+  const supportedJoints = support.filter(
+    (index) => confidence(landmarks[index]) >= TUNING.minSupportVisibility,
+  ).length;
+  if (supportedJoints < TUNING.minSupportCount) return out;
 
   const nose = landmarks[LM.NOSE];
   const ls = landmarks[LM.LEFT_SHOULDER];
@@ -57,7 +88,7 @@ export function classifyPosture(landmarks, w, h) {
   const torsoAngle = dx > 0 ? (Math.atan2(dy, dx) * 180) / Math.PI : 90;
   out.torsoAngle = torsoAngle;
 
-  const visible = landmarks.filter((lm) => lm.visibility > TUNING.minVisibility);
+  const visible = landmarks.filter((lm) => confidence(lm) > TUNING.minVisibility);
   if (visible.length < TUNING.minVisibleCount) return out;
 
   const xs = visible.map((lm) => lm.x * w);
@@ -70,6 +101,7 @@ export function classifyPosture(landmarks, w, h) {
   const bodyH = maxY - minY;
   const aspect = bodyH > 0 ? bodyW / bodyH : 0;
 
+  out.personDetected = true;
   out.box = { x: minX, y: minY, w: bodyW, h: bodyH };
 
   if (torsoAngle < 48 || (aspect > 1.15 && torsoAngle < 55)) {
