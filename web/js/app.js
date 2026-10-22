@@ -1298,6 +1298,21 @@ function loop(ts) {
     torsoAngle: posture.torsoAngle,
     now: now / 1000,
   });
+
+  // A missing person cannot complete the standing recovery check. Clear a stale
+  // emergency after the same five-second no-person grace period used by the lamp.
+  const noPersonTimeout = state.noPersonSince !== null && now - state.noPersonSince >= 5000;
+  if (noPersonTimeout && state.engine.alertActive) {
+    state.engine.isFall = false;
+    state.engine.fallCounter = 0;
+    state.engine.safeCounter = 0;
+    state.engine.alertActive = false;
+    state.engine.standingSince = null;
+    state.engine.recoveryProgress = 0;
+    state.engine.lastSent = "N";
+    if (!events.some((event) => event.type === "safe")) events.push({ type: "safe" });
+    events.push({ type: "resolved" });
+  }
   for (const ev of events) onEngineEvent(ev, now);
 
   drawFrame(v, result, assessments.map((person) => person.posture));
