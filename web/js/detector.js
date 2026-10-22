@@ -35,7 +35,7 @@ export const TUNING = {
   minSupportVisibility: 0.45,
   minSupportCount: 3,
   uprightAngle: 55,      // torso angle above this reads as upright
-  darkThreshold: 110,    // average brightness below this -> lamp on
+  darkThreshold: 90,     // average brightness below this -> lamp on
   brightThreshold: 80,   // hysteresis: above this -> lamp off
 };
 
