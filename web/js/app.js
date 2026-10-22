@@ -1387,7 +1387,7 @@ function updateLamp(now) {
     console.log(`[LAMP ON] brightness=${level.toFixed(1)}`);
   } else if (!shouldBeOn && state.dark) {
     state.dark = false;
-    hardware("C");
+    hardware("O");
     state.lastLampSent = "off";
     state.lastLampCommandAt = now;
     console.log(`[LAMP OFF] brightness=${level.toFixed(1)}`);
@@ -1397,7 +1397,7 @@ function updateLamp(now) {
   const shouldForceOff = !state.lampTestUntil && level > TUNING.darkThreshold;
   if (shouldForceOff
     && (state.lastLampSent !== "off" || now - state.lastLampCommandAt >= 2500)) {
-    hardware("C");
+    hardware("O");
     state.lastLampSent = "off";
     state.lastLampCommandAt = now;
   }
@@ -1607,7 +1607,7 @@ function stopAll() {
   clearTimeout(startCameraRole._timeout);
   clearInterval(joinPairing._timer);
   hardware("N");
-  hardware("C");
+  hardware("O");
   state.dark = false;
   state.lampTestUntil = 0;
   if (state.video && state.video.srcObject) {
