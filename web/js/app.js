@@ -117,6 +117,7 @@ const state = {
   dark: false,
   lightLevel: 0,
   lampTestUntil: 0,
+  noPersonSince: null,
   lastLampSent: null,
   simUntil: 0,
   simStart: 0,
@@ -1257,6 +1258,7 @@ function loop(ts) {
   const lms = primaryPerson?.landmarks || null;
   const personDetected = people.length > 0;
   state.peopleCount = people.length;
+  state.noPersonSince = personDetected ? null : (state.noPersonSince ?? now);
   state.poseVisible = personDetected;
   if (!personDetected) {
     state.prevHipY = null;
@@ -1358,14 +1360,15 @@ function updateLamp(now) {
   state.lightLevel = level;
 
   if (state.lampTestUntil && now > state.lampTestUntil) state.lampTestUntil = 0;
-  const shouldBeOn = Boolean(state.lampTestUntil) || level < TUNING.darkThreshold;
+  const noPersonTimeout = state.noPersonSince !== null && now - state.noPersonSince >= 5000;
+  const shouldBeOn = Boolean(state.lampTestUntil) || (!noPersonTimeout && level < TUNING.darkThreshold);
 
   if (shouldBeOn && !state.dark) {
     state.dark = true;
     hardware("D");
     state.lastLampSent = "on";
     console.log(`[LAMP ON] brightness=${level.toFixed(1)}`);
-  } else if (!shouldBeOn && state.dark && level > TUNING.brightThreshold) {
+  } else if (!shouldBeOn && state.dark && (noPersonTimeout || level > TUNING.brightThreshold)) {
     state.dark = false;
     hardware("C");
     state.lastLampSent = "off";
@@ -1577,6 +1580,9 @@ function stopAll() {
   clearTimeout(startCameraRole._timeout);
   clearInterval(joinPairing._timer);
   hardware("N");
+  hardware("C");
+  state.dark = false;
+  state.lampTestUntil = 0;
   if (state.video && state.video.srcObject) {
     state.video.srcObject.getTracks().forEach((tr) => tr.stop());
   }
