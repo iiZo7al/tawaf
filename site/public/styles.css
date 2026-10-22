@@ -886,12 +886,12 @@ body.hud-off .stage { cursor: zoom-out; }
 
 
 /* Camera switch control: appears on hover in dashboard modes; stays available in camera-only mode. */
-.camera-switch { position: fixed; inset-block-start: 20px; inset-inline-start: 20px; z-index: 12; display: flex; align-items: center; gap: 8px; opacity: 0; pointer-events: none; transition: opacity .2s ease; }
+.camera-switch { position: fixed; inset-block-start: 20px; left: 20px; z-index: 12; display: flex; align-items: center; gap: 8px; opacity: 0; pointer-events: none; transition: opacity .2s ease; }
 body:not(.cam-shell):hover .camera-switch, body:not(.cam-shell) .camera-switch:focus-within { opacity: 1; pointer-events: auto; }
 .camera-switch-btn { display: inline-flex; align-items: center; gap: 7px; padding: 9px 13px; border: 1px solid var(--line); border-radius: 999px; background: var(--glass-strong); color: var(--text); font: inherit; font-size: 12px; cursor: pointer; box-shadow: var(--shadow); }
 .camera-switch-btn:hover { border-color: var(--teal); }
 .camera-switch select:not([hidden]) { max-width: min(240px, 48vw); padding: 9px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--glass-strong); color: var(--text); font: inherit; }
-body.cam-shell .camera-switch { inset-inline-start: 18px; inset-block-start: 18px; opacity: 0; pointer-events: none; }
+body.cam-shell .camera-switch { left: 18px; inset-block-start: 18px; opacity: 0; pointer-events: none; }
 body.cam-shell.solo .camera-switch { opacity: 1; pointer-events: auto; }
 body.cam-shell .camera-switch-btn span { display: none; }
 body.cam-shell .camera-switch-btn { width: 42px; height: 42px; justify-content: center; padding: 0; }
