@@ -106,6 +106,7 @@ const state = {
   lastResults: null,
   fps: 0,
   poseVisible: false,
+  peopleCount: 0,
   torso: 90,
   drop: 0,
   prevHipY: null,
@@ -116,6 +117,7 @@ const state = {
   dark: false,
   lightLevel: 0,
   lampTestUntil: 0,
+  noPersonSince: null,
   lastLampSent: null,
   simUntil: 0,
   simStart: 0,
@@ -782,7 +784,7 @@ async function initPose() {
   const options = (delegate) => ({
     baseOptions: { modelAssetPath: model, delegate },
     runningMode: "VIDEO",
-    numPoses: 1,
+    numPoses: 10,
     minPoseDetectionConfidence: 0.65,
     minPosePresenceConfidence: 0.65,
     minTrackingConfidence: 0.6,
@@ -815,7 +817,7 @@ function canvasSize(w, h) {
   }
 }
 
-function drawFrame(video, result, posture, alarm) {
+function drawFrame(video, result, postures) {
   const w = video.videoWidth || 1280;
   const h = video.videoHeight || 720;
   canvasSize(w, h);
@@ -827,46 +829,53 @@ function drawFrame(video, result, posture, alarm) {
   ctx.drawImage(video, 0, 0, w, h);
   ctx.restore();
 
-  if (state.dark && !alarm) {
+  if (state.dark && !state.engine.isFall) {
     ctx.fillStyle = "rgba(255, 170, 60, 0.07)";
     ctx.fillRect(0, 0, w, h);
   }
 
-  const lms = result && result.landmarks ? result.landmarks[0] : null;
-  if (!lms) return;
+  const poses = result && Array.isArray(result.landmarks) ? result.landmarks : [];
+  if (!poses.length) return;
 
-  const skel = alarm ? "rgba(255, 70, 80, 0.95)" : "rgba(46, 230, 200, 0.9)";
-  const joint = alarm ? "rgba(255, 170, 90, 0.95)" : "rgba(255, 215, 0, 0.9)";
   const pt = (lm) => [(1 - lm.x) * w, lm.y * h];
-
   ctx.lineWidth = Math.max(2, w / 460);
-  ctx.strokeStyle = skel;
-  ctx.beginPath();
-  for (const [a, b] of CONNECTIONS) {
-    const la = lms[a];
-    const lb = lms[b];
-    if (!la || !lb) continue;
-    if ((la.visibility ?? 1) < 0.3 || (lb.visibility ?? 1) < 0.3) continue;
-    const [x1, y1] = pt(la);
-    const [x2, y2] = pt(lb);
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-  }
-  ctx.stroke();
 
-  ctx.fillStyle = joint;
-  for (const lm of lms) {
-    if ((lm.visibility ?? 1) < 0.3) continue;
-    const [x, y] = pt(lm);
+  for (let index = 0; index < poses.length; index += 1) {
+    const lms = poses[index];
+    const posture = postures[index];
+    if (!lms || !posture?.personDetected) continue;
+
+    const poseAlarm = Boolean(posture.isFall);
+    const skel = poseAlarm ? "rgba(255, 70, 80, 0.95)" : "rgba(46, 230, 200, 0.9)";
+    const joint = poseAlarm ? "rgba(255, 170, 90, 0.95)" : "rgba(255, 215, 0, 0.9)";
+
+    ctx.strokeStyle = skel;
     ctx.beginPath();
-    ctx.arc(x, y, Math.max(2, w / 420), 0, Math.PI * 2);
-    ctx.fill();
-  }
+    for (const [a, b] of CONNECTIONS) {
+      const la = lms[a];
+      const lb = lms[b];
+      if (!la || !lb) continue;
+      if ((la.visibility ?? 1) < 0.3 || (lb.visibility ?? 1) < 0.3) continue;
+      const [x1, y1] = pt(la);
+      const [x2, y2] = pt(lb);
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+    }
+    ctx.stroke();
 
-  const box = posture.box;
-  if (box) {
-    const mx = w - (box.x + box.w); // mirror to match the flipped video
-    const color = alarm ? "#ff3b4e" : "#2ee6c8";
+    ctx.fillStyle = joint;
+    for (const lm of lms) {
+      if ((lm.visibility ?? 1) < 0.3) continue;
+      const [x, y] = pt(lm);
+      ctx.beginPath();
+      ctx.arc(x, y, Math.max(2, w / 420), 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const box = posture.box;
+    if (!box) continue;
+    const mx = w - (box.x + box.w);
+    const color = poseAlarm ? "#ff3b4e" : "#2ee6c8";
     const len = Math.max(16, Math.min(34, Math.min(box.w, box.h) / 3));
     ctx.strokeStyle = color;
     ctx.lineWidth = 2;
@@ -888,12 +897,12 @@ function drawFrame(video, result, posture, alarm) {
     ctx.globalAlpha = 1;
 
     const reason = translateReason(posture.reason);
-    const label = alarm ? `EMERGENCY: ${reason}` : `SAFE · ${Math.round(posture.torsoAngle)}°`;
+    const label = poseAlarm ? `EMERGENCY: ${reason}` : `SAFE · ${Math.round(posture.torsoAngle)}°`;
     ctx.font = `600 ${Math.max(13, Math.round(w / 62))}px "PlexArabic", system-ui, sans-serif`;
     const tw = ctx.measureText(label).width;
     const pad = 8;
     const by = Math.max(8, box.y - 34);
-    ctx.fillStyle = alarm ? "rgba(150, 12, 28, 0.88)" : "rgba(10, 30, 26, 0.82)";
+    ctx.fillStyle = poseAlarm ? "rgba(150, 12, 28, 0.88)" : "rgba(10, 30, 26, 0.82)";
     ctx.fillRect(mx, by, tw + pad * 2, 26);
     ctx.strokeStyle = color;
     ctx.lineWidth = 1;
@@ -1234,23 +1243,31 @@ function loop(ts) {
   const result = state.lastResults;
   const w = v.videoWidth || 1280;
   const h = v.videoHeight || 720;
-  const lms = result && result.landmarks ? result.landmarks[0] : null;
-
-  let posture = {
+  const landmarks = result && Array.isArray(result.landmarks) ? result.landmarks : [];
+  const assessments = landmarks.map((poseLandmarks) => ({
+    landmarks: poseLandmarks,
+    posture: classifyPosture(poseLandmarks, w, h),
+  }));
+  const people = assessments.filter((person) => person.posture.personDetected);
+  const fallenPerson = people.find((person) => person.posture.isFall) || null;
+  const primaryPerson = fallenPerson || people[0] || null;
+  const posture = primaryPerson ? primaryPerson.posture : {
     personDetected: false, isFall: false, reason: "",
     torsoAngle: 90, standing: false, box: null,
   };
-  if (lms) posture = classifyPosture(lms, w, h);
-  const personDetected = Boolean(posture.personDetected);
+  const lms = primaryPerson?.landmarks || null;
+  const personDetected = people.length > 0;
+  state.peopleCount = people.length;
+  state.noPersonSince = personDetected ? null : (state.noPersonSince ?? now);
   state.poseVisible = personDetected;
   if (!personDetected) {
     state.prevHipY = null;
     state.drop = 0;
   }
 
-  let frameFall = posture.isFall;
-  let standing = posture.standing;
-  let reason = posture.reason;
+  let frameFall = Boolean(fallenPerson);
+  let standing = !frameFall && people.some((person) => person.posture.standing);
+  let reason = fallenPerson?.posture.reason || posture.reason;
   if (state.simUntil > now) {
     const elapsed = (now - state.simStart) / 1000;
     if (elapsed < 3.8) {
@@ -1263,7 +1280,7 @@ function loop(ts) {
     }
   }
 
-  if (personDetected) {
+  if (lms) {
     const hipY = (lms[23].y + lms[24].y) / 2;
     if (state.prevHipY !== null) {
       state.drop = Math.max(0, ((hipY - state.prevHipY) / dt) * 1.6);
@@ -1281,9 +1298,24 @@ function loop(ts) {
     torsoAngle: posture.torsoAngle,
     now: now / 1000,
   });
+
+  // A missing person cannot complete the standing recovery check. Clear a stale
+  // emergency after the same five-second no-person grace period used by the lamp.
+  const noPersonTimeout = state.noPersonSince !== null && now - state.noPersonSince >= 5000;
+  if (noPersonTimeout && state.engine.alertActive) {
+    state.engine.isFall = false;
+    state.engine.fallCounter = 0;
+    state.engine.safeCounter = 0;
+    state.engine.alertActive = false;
+    state.engine.standingSince = null;
+    state.engine.recoveryProgress = 0;
+    state.engine.lastSent = "N";
+    if (!events.some((event) => event.type === "safe")) events.push({ type: "safe" });
+    events.push({ type: "resolved" });
+  }
   for (const ev of events) onEngineEvent(ev, now);
 
-  drawFrame(v, personDetected ? result : null, posture, state.engine.isFall);
+  drawFrame(v, result, assessments.map((person) => person.posture));
   updateHUD();
 
   if (now - state.lastFrameSent > 125) {
@@ -1343,14 +1375,15 @@ function updateLamp(now) {
   state.lightLevel = level;
 
   if (state.lampTestUntil && now > state.lampTestUntil) state.lampTestUntil = 0;
-  const shouldBeOn = Boolean(state.lampTestUntil) || level < TUNING.darkThreshold;
+  const noPersonTimeout = state.noPersonSince !== null && now - state.noPersonSince >= 5000;
+  const shouldBeOn = Boolean(state.lampTestUntil) || (!noPersonTimeout && level < TUNING.darkThreshold);
 
   if (shouldBeOn && !state.dark) {
     state.dark = true;
     hardware("D");
     state.lastLampSent = "on";
     console.log(`[LAMP ON] brightness=${level.toFixed(1)}`);
-  } else if (!shouldBeOn && state.dark && level > TUNING.brightThreshold) {
+  } else if (!shouldBeOn && state.dark && (noPersonTimeout || level > TUNING.brightThreshold)) {
     state.dark = false;
     hardware("C");
     state.lastLampSent = "off";
@@ -1379,7 +1412,7 @@ function updateHUD() {
   chip("fps", state.fps > 1 ? "on" : "warn", `${Math.round(state.fps)}`);
 
   el.subjects.classList.toggle("empty", !state.poseVisible);
-  el.subjectsText.textContent = t(state.poseVisible ? "subjects.one" : "subjects.none");
+  el.subjectsText.textContent = t(state.peopleCount > 0 ? "subjects.count" : "subjects.none", { count: state.peopleCount });
 
   if (eng.isFall) {
     setStatus("status.alarm", null, eng.fallReason || "ALERT");
@@ -1431,6 +1464,7 @@ function publishTelemetry() {
     brightness: Math.round(state.lightLevel || 0),
     fps: Math.round(state.fps),
     poseVisible: state.poseVisible,
+    peopleCount: state.peopleCount,
     alertActive: eng.alertActive,
     lang: getLang(),
   });
@@ -1441,6 +1475,7 @@ function applyRemoteTelemetry(tel) {
   state.torso = tel.torso || 90;
   state.drop = tel.drop || 0;
   state.poseVisible = Boolean(tel.poseVisible);
+  state.peopleCount = Number.isFinite(Number(tel.peopleCount)) ? Number(tel.peopleCount) : (state.poseVisible ? 1 : 0);
   state.dark = Boolean(tel.dark);
   state.lightLevel = tel.brightness || 0;
 
@@ -1456,7 +1491,7 @@ function applyRemoteTelemetry(tel) {
   el.lampRow.classList.toggle("on", state.dark);
   el.lampText.textContent = t(state.dark ? "lamp.onShort" : "lamp.offShort");
   el.subjects.classList.toggle("empty", !state.poseVisible);
-  el.subjectsText.textContent = t(state.poseVisible ? "subjects.remote" : "subjects.none");
+  el.subjectsText.textContent = t(state.peopleCount > 0 ? "subjects.count" : "subjects.none", { count: state.peopleCount });
   chip("fps", "on", `${tel.fps || 0}`);
 
   document.body.classList.toggle("alarm", Boolean(tel.fall));
@@ -1560,6 +1595,9 @@ function stopAll() {
   clearTimeout(startCameraRole._timeout);
   clearInterval(joinPairing._timer);
   hardware("N");
+  hardware("C");
+  state.dark = false;
+  state.lampTestUntil = 0;
   if (state.video && state.video.srcObject) {
     state.video.srcObject.getTracks().forEach((tr) => tr.stop());
   }
@@ -1820,9 +1858,7 @@ function refreshTranslations() {
   }
   const badge = document.getElementById("solo-badge");
   if (badge) badge.title = t("solo.hold");
-  if (state.role === "view" && state.poseVisible) {
-    el.subjectsText.textContent = t("subjects.remote");
-  }
+  el.subjectsText.textContent = t(state.peopleCount > 0 ? "subjects.count" : "subjects.none", { count: state.peopleCount });
 }
 
 async function boot() {
