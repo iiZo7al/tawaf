@@ -55,6 +55,8 @@ const el = {
     fps: $("chip-fps"),
   },
   deviceSelect: $("device-select"),
+  activeCameraSelect: $("active-camera-select"),
+  btnCameraSwitch: $("btn-camera-switch"),
   deviceRow: $("device-row"),
   pairInput: $("pair-input"),
   pairRow: $("pair-row"),
@@ -253,6 +255,17 @@ function handleCloudMessage(msg) {
   }
   const screenTopic = "bsg/v2/" + state.pairCode + "/scr";
   const cameraTopic = "bsg/v2/" + state.pairCode + "/cam";
+  if (state.role === "camera" && msg.__topic === screenTopic && msg.type === "control" && msg.action === "switch-camera") {
+    listCameras().then(() => {
+      const options = [...el.deviceSelect.options].filter((option) => option.value);
+      if (!options.length) return;
+      const current = options.findIndex((option) => option.value === el.deviceSelect.value);
+      const next = options[(current + 1) % options.length];
+      el.deviceSelect.value = next.value;
+      switchLocalCamera(next.value).catch(() => toast("تعذر تغيير الكاميرا.", true));
+    });
+    return;
+  }
   if (state.role === "camera" && msg.__topic === screenTopic && msg.type === "control" && msg.action === "simulate") {
     startSimulationLocal();
     return;
@@ -639,10 +652,26 @@ async function listCameras() {
       el.deviceSelect.appendChild(opt);
     });
     if (keep) el.deviceSelect.value = keep;
+    if (el.activeCameraSelect) {
+      const active = el.activeCameraSelect.value;
+      el.activeCameraSelect.innerHTML = "";
+      cams.forEach((d, i) => { const opt = document.createElement("option"); opt.value = d.deviceId; opt.textContent = d.label || `Camera ${i + 1}`; el.activeCameraSelect.appendChild(opt); });
+      if (active) el.activeCameraSelect.value = active;
+    }
     return cams.length;
   } catch {
     return 0;
   }
+}
+
+async function switchLocalCamera(deviceId) {
+  if (!state.video || !state.running) return;
+  const next = await openCamera(deviceId || "");
+  const previous = state.video.srcObject;
+  state.video.srcObject = next;
+  await state.video.play();
+  previous?.getTracks?.().forEach((track) => track.stop());
+  if (deviceId) el.deviceSelect.value = deviceId;
 }
 
 function withTimeout(promise, ms, message) {
@@ -1575,6 +1604,20 @@ function bindControls() {
   // must also be able to bring the dashboard back.
   el.waiting.addEventListener("click", () => {
     if (document.body.classList.contains("hud-off")) toggleImmersive();
+  });
+  el.btnCameraSwitch?.addEventListener("click", async () => {
+    if (state.role === "view") {
+      if (!link || !link.send({ type: "control", action: "switch-camera" })) toast("الكاميرا غير متصلة.", true);
+      else toast("أُرسل طلب تغيير الكاميرا.");
+      return;
+    }
+    await listCameras();
+    if (!el.activeCameraSelect?.options.length) { toast("لا توجد كاميرا متاحة.", true); return; }
+    el.activeCameraSelect.hidden = !el.activeCameraSelect.hidden;
+    if (!el.activeCameraSelect.hidden) el.activeCameraSelect.focus();
+  });
+  el.activeCameraSelect?.addEventListener("change", () => {
+    switchLocalCamera(el.activeCameraSelect.value).catch(() => toast("تعذر تغيير الكاميرا.", true));
   });
   el.btnFullscreen.addEventListener("click", toggleFullscreen);
   el.btnHud.addEventListener("click", toggleHud);
