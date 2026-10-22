@@ -1376,8 +1376,8 @@ function updateLamp(now) {
   state.lightLevel = level;
 
   if (state.lampTestUntil && now > state.lampTestUntil) state.lampTestUntil = 0;
-  const noPersonTimeout = state.noPersonSince !== null && now - state.noPersonSince >= 5000;
-  const shouldBeOn = Boolean(state.lampTestUntil) || (!noPersonTimeout && level < TUNING.darkThreshold);
+  // This lamp responds only to brightness: ON at 90 or below, OFF above 90.
+  const shouldBeOn = Boolean(state.lampTestUntil) || level <= TUNING.darkThreshold;
 
   if (shouldBeOn && !state.dark) {
     state.dark = true;
@@ -1385,7 +1385,7 @@ function updateLamp(now) {
     state.lastLampSent = "on";
     state.lastLampCommandAt = now;
     console.log(`[LAMP ON] brightness=${level.toFixed(1)}`);
-  } else if (!shouldBeOn && state.dark && (noPersonTimeout || level > TUNING.brightThreshold)) {
+  } else if (!shouldBeOn && state.dark) {
     state.dark = false;
     hardware("C");
     state.lastLampSent = "off";
@@ -1393,10 +1393,8 @@ function updateLamp(now) {
     console.log(`[LAMP OFF] brightness=${level.toFixed(1)}`);
   }
 
-  // Retry OFF while the scene is empty or bright. MQTT/serial delivery can
-  // briefly fail, and without an acknowledgement a single C command is fragile.
-  const shouldForceOff = !state.lampTestUntil
-    && (noPersonTimeout || level >= TUNING.darkThreshold);
+  // Retry OFF while brightness is above 90. People detection does not control this lamp.
+  const shouldForceOff = !state.lampTestUntil && level > TUNING.darkThreshold;
   if (shouldForceOff
     && (state.lastLampSent !== "off" || now - state.lastLampCommandAt >= 2500)) {
     hardware("C");
