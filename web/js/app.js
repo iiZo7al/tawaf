@@ -119,6 +119,7 @@ const state = {
   lampTestUntil: 0,
   noPersonSince: null,
   lastLampSent: null,
+  lastLampCommandAt: 0,
   simUntil: 0,
   simStart: 0,
   lastFrameSent: 0,
@@ -1382,12 +1383,25 @@ function updateLamp(now) {
     state.dark = true;
     hardware("D");
     state.lastLampSent = "on";
+    state.lastLampCommandAt = now;
     console.log(`[LAMP ON] brightness=${level.toFixed(1)}`);
   } else if (!shouldBeOn && state.dark && (noPersonTimeout || level > TUNING.brightThreshold)) {
     state.dark = false;
     hardware("C");
     state.lastLampSent = "off";
+    state.lastLampCommandAt = now;
     console.log(`[LAMP OFF] brightness=${level.toFixed(1)}`);
+  }
+
+  // Retry OFF while the scene is empty or bright. MQTT/serial delivery can
+  // briefly fail, and without an acknowledgement a single C command is fragile.
+  const shouldForceOff = !state.lampTestUntil
+    && (noPersonTimeout || level >= TUNING.darkThreshold);
+  if (shouldForceOff
+    && (state.lastLampSent !== "off" || now - state.lastLampCommandAt >= 2500)) {
+    hardware("C");
+    state.lastLampSent = "off";
+    state.lastLampCommandAt = now;
   }
 
   el.lampRow.classList.toggle("on", state.dark);
