@@ -754,9 +754,9 @@ async function initPose() {
     baseOptions: { modelAssetPath: model, delegate },
     runningMode: "VIDEO",
     numPoses: 1,
-    minPoseDetectionConfidence: 0.5,
-    minPosePresenceConfidence: 0.5,
-    minTrackingConfidence: 0.5,
+    minPoseDetectionConfidence: 0.65,
+    minPosePresenceConfidence: 0.65,
+    minTrackingConfidence: 0.6,
   });
 
   try {
@@ -1211,10 +1211,18 @@ function loop(ts) {
   const w = v.videoWidth || 1280;
   const h = v.videoHeight || 720;
   const lms = result && result.landmarks ? result.landmarks[0] : null;
-  state.poseVisible = Boolean(lms);
 
-  let posture = { isFall: false, reason: "", torsoAngle: 90, standing: false, box: null };
+  let posture = {
+    personDetected: false, isFall: false, reason: "",
+    torsoAngle: 90, standing: false, box: null,
+  };
   if (lms) posture = classifyPosture(lms, w, h);
+  const personDetected = Boolean(posture.personDetected);
+  state.poseVisible = personDetected;
+  if (!personDetected) {
+    state.prevHipY = null;
+    state.drop = 0;
+  }
 
   let frameFall = posture.isFall;
   let standing = posture.standing;
@@ -1231,7 +1239,7 @@ function loop(ts) {
     }
   }
 
-  if (lms) {
+  if (personDetected) {
     const hipY = (lms[23].y + lms[24].y) / 2;
     if (state.prevHipY !== null) {
       state.drop = Math.max(0, ((hipY - state.prevHipY) / dt) * 1.6);
@@ -1251,7 +1259,7 @@ function loop(ts) {
   });
   for (const ev of events) onEngineEvent(ev, now);
 
-  drawFrame(v, result, posture, state.engine.isFall);
+  drawFrame(v, personDetected ? result : null, posture, state.engine.isFall);
   updateHUD();
 
   if (now - state.lastFrameSent > 125) {
