@@ -57,6 +57,7 @@ const STRINGS = {
     "lamp.offShort": "اللمبة التلقائية: متوقفة",
 
     "subjects.none": "لا يوجد شخص في الإطار",
+    "subjects.count": "الأشخاص في الإطار: {count}",
     "subjects.one": "شخص واحد في الإطار · بث مباشر من الكاميرا",
     "subjects.remote": "شخص في الإطار (بث بعيد)",
 
@@ -258,6 +259,7 @@ const STRINGS = {
     "lamp.offShort": "Auto lamp: OFF",
 
     "subjects.none": "No person in frame",
+    "subjects.count": "People in frame: {count}",
     "subjects.one": "One person in frame · live camera",
     "subjects.remote": "Person in frame (remote stream)",
 
