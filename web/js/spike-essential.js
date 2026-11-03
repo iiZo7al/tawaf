@@ -15,10 +15,17 @@ export class SpikeEssential {
 
   async connect() {
     if (!navigator.bluetooth) throw new Error("استخدم Chrome أو Edge مع Bluetooth.");
-    this.device = await navigator.bluetooth.requestDevice({
-      filters: [{ services: [SERVICE_UUID] }],
-      optionalServices: [SERVICE_UUID],
-    });
+    try {
+      this.device = await navigator.bluetooth.requestDevice({
+        filters: [{ services: [SERVICE_UUID] }],
+        optionalServices: [SERVICE_UUID],
+      });
+    } catch (err) {
+      if (err?.name === "NotFoundError" && /globally disabled/i.test(err.message || "")) {
+        throw new Error("Brave عطّل Web Bluetooth. افتح الموقع في Microsoft Edge أو Google Chrome للاتصال بالمكعب.");
+      }
+      throw err;
+    }
     this.device.addEventListener("gattserverdisconnected", () => { this.command = null; });
     const server = await this.device.gatt.connect();
     const service = await server.getPrimaryService(SERVICE_UUID);
