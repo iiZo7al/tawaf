@@ -164,6 +164,22 @@
         <p class="field-hint" data-i18n="setup.hint">تُدرج كاميرا USB أو كاميرا IR تلقائياً بمجرد توصيلها.</p>
       </div>
 
+      <div class="field spike-connect-row">
+        <label for="spike-port">روبوت LEGO SPIKE Essential</label>
+        <div class="serial-row">
+          <select id="spike-port" aria-label="منفذ محرك SPIKE">
+            <option value="A">منفذ المحرك A</option>
+            <option value="B">منفذ المحرك B</option>
+          </select>
+          <select id="spike-direction" aria-label="اتجاه حركة المحرك">
+            <option value="1">الاتجاه الحالي</option>
+            <option value="-1">عكس الاتجاه</option>
+          </select>
+          <button class="ghost" id="btn-connect-spike">اتصال بالمكعب</button>
+        </div>
+        <p class="field-hint" id="spike-state">اتصل بالمكعب قبل بدء الكاميرا. عند رصد شخص أمام الكاميرا يرفع المحرك الروبوت.</p>
+      </div>
+
       <div class="setup-actions">
         <button class="primary" id="btn-start" data-i18n="setup.start">▶ بدء المراقبة</button>
         <button class="ghost" id="btn-serial" data-i18n="setup.serial">اتصال الأردوينو (بلوتوث)</button>

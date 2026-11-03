@@ -9,6 +9,7 @@ import {
   TUNING,
 } from "./detector.js";
 import { CloudLink, newCode, normalizeCode } from "./link.js";
+import { SpikeEssential } from "./spike-essential.js";
 import {
   t,
   getLang,
@@ -143,6 +144,10 @@ const state = {
   statusKey: "status.idle",
   statusVars: null,
   statusReason: "",
+  spike: new SpikeEssential(),
+  spikePresentFrames: 0,
+  spikeAbsentFrames: 0,
+  spikeLiftedForPresence: false,
 };
 
 let audioCtx = null;
@@ -1261,6 +1266,26 @@ function loop(ts) {
   state.peopleCount = people.length;
   state.noPersonSince = personDetected ? null : (state.noPersonSince ?? now);
   state.poseVisible = personDetected;
+  if (personDetected) {
+    state.spikePresentFrames += 1;
+    state.spikeAbsentFrames = 0;
+  } else {
+    state.spikePresentFrames = 0;
+    state.spikeAbsentFrames += 1;
+    if (state.spikeAbsentFrames >= 15) state.spikeLiftedForPresence = false;
+  }
+  if (state.spikePresentFrames >= 5 && !state.spikeLiftedForPresence && state.spike.connected) {
+    state.spikeLiftedForPresence = true;
+    const port = $("spike-port")?.value || "A";
+    const direction = Number($("spike-direction")?.value || 1);
+    state.spike.lift({ port, degrees: 180, speed: 35 * direction, maxPower: 50 }).then(() => {
+      const status = $("spike-state");
+      if (status) status.textContent = `تم إرسال أمر الرفع عبر المحرك ${port}.`;
+    }).catch((err) => {
+      const status = $("spike-state");
+      if (status) status.textContent = `تعذّر تحريك الروبوت: ${err.message}`;
+    });
+  }
   if (!personDetected) {
     state.prevHipY = null;
     state.drop = 0;
@@ -1681,6 +1706,18 @@ function bindControls() {
     el.drawer.classList.remove("hidden");
     requestPorts();
     el.portSelect.focus();
+  });
+  $("btn-connect-spike")?.addEventListener("click", async () => {
+    const status = $("spike-state");
+    if (status) status.textContent = "جارٍ البحث عن مكعب SPIKE Essential…";
+    try {
+      const name = await state.spike.connect();
+      if (status) status.textContent = `متصل بـ ${name}. شغّل الكاميرا للكشف عن شخص ورفع الروبوت.`;
+      toast(`تم الاتصال بـ ${name}`);
+    } catch (err) {
+      if (status) status.textContent = `تعذّر الاتصال: ${err.message}`;
+      toast(`تعذّر اتصال SPIKE: ${err.message}`, true);
+    }
   });
   el.btnRefreshPorts.addEventListener("click", requestPorts);
   el.btnConnectSerial.addEventListener("click", connectBrowserSerial);
